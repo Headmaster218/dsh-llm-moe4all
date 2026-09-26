@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        dsh-version:
+          - 0.1.1-rc.2
+          - 0.1.5-rc.3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save --package-lock=false "@deepseek-ai/dsh-llm-pi-ai@${{ matrix.dsh-version }}"
+      - run: npm run check
