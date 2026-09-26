@@ -1,8 +1,8 @@
 # dsh-llm-moe4all
 
-`dsh-llm-moe4all` connects DeepSeek Harness to a local MoE4All OpenAI-compatible server and can manage the server process when an executable and arguments are configured.
+`dsh-llm-moe4all` connects DeepSeek Harness to a MoE4All OpenAI-compatible server and can safely manage a local server process when an executable and arguments are configured.
 
-The plugin intentionally delegates chat, tools, images, reasoning blocks, retries, and replay compatibility to DSH's own `@deepseek-ai/dsh-llm-pi-ai` adapter. It owns only local engine discovery, startup, health monitoring, and shutdown.
+The plugin intentionally delegates chat, tools, images, reasoning blocks, retries, and replay compatibility to DSH's own `@deepseek-ai/dsh-llm-pi-ai` adapter. It owns endpoint and model discovery, guarded local startup, health monitoring, and shutdown.
 
 Chinese documentation: [README.zh.md](README.zh.md)
 
@@ -27,15 +27,17 @@ After the npm release:
 dsh plugin --profile web add dsh-llm-moe4all
 ```
 
-The bundle adds a `moe4all` provider at `http://127.0.0.1:1234/v1` and a generic `MoE4All Local` model entry. MoE4All routes an unknown model name to the first loaded chat model, so the generic entry works for the normal single-model server. Use DSH's Models settings and discovery flow when one server hosts multiple models.
+The default endpoint is `http://127.0.0.1:8080/v1`. The plugin reads `/v1/models`, filters embedding models, and updates DSH's existing `llm-pi-ai` adapter in memory. The detected model IDs therefore stay accurate without persisting a second adapter configuration.
 
 ## Engine modes
 
-- `connect`: connect to an already-running server and never start a process.
-- `auto`: reuse a healthy server; otherwise start the configured executable. Missing launch configuration is reported without preventing DSH from starting.
+- `connect` (default): connect to an already-running server and never start a process.
+- `auto`: reuse a healthy server; otherwise consider starting the configured executable. Unattended startup requires both RAM and live VRAM to be more than 50% free.
 - `managed`: like `auto`, but missing launch configuration is treated as an error.
 
-Automatic launch is disabled until both `executable` and `arguments` are configured. This prevents an unconfigured `infr.exe` from opening an interactive wizard inside DSH.
+Before any launch, the plugin checks the operating-system process list for `infr.exe`, `moe4all.exe`, and the configured executable name. An existing process prevents a second launch even when it listens on another IP or port. When RAM or VRAM is not more than 50% free, automatic startup pauses and asks for confirmation through the DSH Desktop/Electron dialog, with a native Windows dialog fallback. If no confirmation surface is available, it stays stopped.
+
+Automatic launch is also disabled until both `executable` and `arguments` are configured. This prevents an unconfigured `infr.exe` from opening an interactive wizard inside DSH.
 
 Example plugin-row override:
 
@@ -43,7 +45,8 @@ Example plugin-row override:
 - id: moe4all-engine
   config:
     mode: auto
-    endpoint: http://127.0.0.1:1234/v1
+    host: 127.0.0.1
+    port: 1234
     executable: D:\AIinfr\infr\target\release\infr.exe
     arguments:
       - serve
@@ -57,13 +60,15 @@ Example plugin-row override:
 
 `MOE4ALL_ENGINE` can supply the executable path. If neither the setting nor the environment variable is present, the plugin also checks `engine/infr.exe`, the configured working directory, and `PATH`.
 
-Endpoints are restricted to loopback by default. Set `allowRemoteEndpoint: true` only when the remote server is intentional. API keys stay outside the plugin configuration: set `apiKeyEnv` to the name of an existing environment variable and configure the same credential reference in DSH's Models settings.
+`host`, `port`, `protocol`, and `apiBasePath` are independently configurable. The advanced `endpoint` field overrides all four when non-empty. Endpoints are restricted to loopback by default; set `allowRemoteEndpoint: true` only for an intentional remote server. A remote endpoint is connection-only and never causes a local process launch. API keys stay outside the plugin configuration: `apiKeyEnv` names an existing environment variable.
 
 ## Security behavior
 
 - No install-time downloads or process execution.
 - Child processes are spawned directly with `shell: false`.
 - Network access is loopback-only unless explicitly enabled.
+- Existing engine processes are detected independently of the configured port.
+- Unattended local launch requires strictly more than 50% free RAM and VRAM.
 - The plugin never stores an API-key value in its configuration.
 - A process started by the plugin is stopped when the plugin unloads by default.
 

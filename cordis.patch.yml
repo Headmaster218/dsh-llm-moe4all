@@ -1,38 +1,41 @@
-# MoE4All uses DSH's built-in pi-ai adapter for the OpenAI-compatible wire
-# protocol. This bundle supplies one useful local route and manages the engine
-# process separately, so DSH protocol upgrades remain owned by DSH.
-
-- id: llm-pi-ai
-  config:
-    providers:
-      moe4all:
-        displayName: MoE4All
-        api: openai-completions
-        baseURL: http://127.0.0.1:1234/v1
-        models:
-          - id: moe4all
-            name: MoE4All Local
-            contextWindow: 262144
-            maxTokens: 102400
-            input:
-              - text
-              - image
-            reasoningEfforts: false
+# The plugin updates DSH's existing llm-pi-ai adapter in memory after it has
+# discovered the models advertised by the configured MoE4All endpoint.
 
 - insert:
     - id: moe4all-engine
       name: dsh-llm-moe4all
       config:
-        mode: auto
-        endpoint: http://127.0.0.1:1234/v1
+        mode: connect
+        protocol: http
+        host: 127.0.0.1
+        port: 8080
+        apiBasePath: /v1
+        endpoint: ''
         executable: ''
         arguments: []
         workingDirectory: ''
         apiKeyEnv: ''
         allowRemoteEndpoint: false
+        processNames:
+          - infr.exe
+          - moe4all.exe
+          - infr
+          - moe4all
+        minimumFreeRamFraction: 0.5
+        minimumFreeVramFraction: 0.5
+        promptWhenBusy: true
+        resourceProbeTimeoutMs: 10000
         startupTimeoutMs: 120000
         healthTimeoutMs: 2000
         pollIntervalMs: 500
         shutdownTimeoutMs: 5000
         stopOnUnload: true
         logOutput: true
+        contextWindow: 262144
+        maxTokens: 102400
+        vision: true
+        excludeModelNameContains:
+          - embed
+          - embedding
+        modelRefreshIntervalMs: 15000
+        modelDiscoveryTimeoutMs: 3000

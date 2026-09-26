@@ -10,10 +10,10 @@ test('package is an installable DSH bundle', async () => {
   assert.match(manifest.engines.dsh, /0\.1\.5/)
 })
 
-test('bundle wires both the DSH adapter and engine manager', async () => {
+test('bundle wires the engine manager and leaves the existing DSH adapter in place', async () => {
   const patch = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
-  assert.match(patch, /id: llm-pi-ai/)
   assert.match(patch, /id: moe4all-engine/)
   assert.match(patch, /name: dsh-llm-moe4all/)
-  assert.match(patch, /127\.0\.0\.1:1234/)
+  assert.match(patch, /port: 8080/)
+  assert.doesNotMatch(patch, /id: llm-pi-ai/)
 })
