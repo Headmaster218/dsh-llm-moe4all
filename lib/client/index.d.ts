@@ -6,4 +6,12 @@ declare const plugin: {
     apply: typeof apply;
 };
 export default plugin;
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+    interface SlotMap {
+        'shell.overlay': {
+            kind: 'list';
+            scope: 'root';
+        };
+    }
+}
 //# sourceMappingURL=index.d.ts.map

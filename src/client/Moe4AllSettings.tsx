@@ -4,7 +4,11 @@ import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 
 import type { Config } from '../index.js'
+import type { EngineControlStatus } from '../host-routes.js'
+import type { EngineReleaseStatus } from '../engine-release.js'
+import { fetchEngineStatus, fetchReleaseStatus, installLatestEngine, startEngine } from './engine-api.js'
 import type { Moe4AllLocaleKey } from './locales.js'
+import { formatTokenValue, parseTokenValue } from './token-value.js'
 
 type ResolvedConfig = { [K in keyof Config]-?: Exclude<Config[K], undefined> }
 
@@ -29,7 +33,8 @@ function lines(value: string): string[] {
 }
 
 function resolved(value: Config): ResolvedConfig {
-  return value as ResolvedConfig
+  const mode = value.mode === 'managed' ? 'prompt' : value.mode
+  return { ...value, mode } as ResolvedConfig
 }
 
 interface FieldProps {
@@ -70,6 +75,46 @@ function Check({ checked, disabled, label, onChange }: CheckProps): ReactNode {
   )
 }
 
+function TokenInput({ value, disabled, onChange }: {
+  value: number
+  disabled: boolean
+  onChange(value: number): void
+}): ReactNode {
+  const [text, setText] = useState(formatTokenValue(value))
+  const valid = parseTokenValue(text) !== undefined
+
+  useEffect(() => { setText(formatTokenValue(value)) }, [value])
+
+  return (
+    <input
+      className={`m4a-settings__input${valid || text === '' ? '' : ' m4a-settings__input--invalid'}`}
+      type="text"
+      inputMode="decimal"
+      value={text}
+      disabled={disabled}
+      placeholder="160k"
+      onChange={event => {
+        const next = event.target.value
+        setText(next)
+        const parsed = parseTokenValue(next)
+        if (parsed !== undefined) onChange(parsed)
+      }}
+      onBlur={() => {
+        const parsed = parseTokenValue(text)
+        setText(parsed === undefined ? formatTokenValue(value) : text.trim().toLowerCase())
+      }}
+    />
+  )
+}
+
+function statusClass(status: EngineControlStatus | null): string {
+  if (status?.ready === true) return 'ready'
+  if (status?.phase === 'starting' || status?.phase === 'checking') return 'busy'
+  if (status?.phase === 'resource-warning') return 'warning'
+  if (status?.phase === 'error' || status?.phase === 'duplicate-process') return 'error'
+  return 'offline'
+}
+
 export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
   const { t, useMoe4AllSettings, save } = props
   const snapshot = useMoe4AllSettings(value => value)
@@ -77,10 +122,43 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
     snapshot.value === undefined ? null : resolved(snapshot.value),
   )
   const [saving, setSaving] = useState(false)
+  const [acting, setActing] = useState(false)
+  const [status, setStatus] = useState<EngineControlStatus | null>(null)
+  const [release, setRelease] = useState<EngineReleaseStatus | null>(null)
+  const [error, setError] = useState('')
+  const [confirmBusy, setConfirmBusy] = useState(false)
 
   useEffect(() => {
     if (!saving && snapshot.value !== undefined) setDraft(resolved(snapshot.value))
   }, [saving, snapshot.revision, snapshot.value])
+
+  useEffect(() => {
+    let disposed = false
+    const poll = async (): Promise<void> => {
+      try {
+        const next = await fetchEngineStatus()
+        if (!disposed) setStatus(next)
+      } catch (cause) {
+        if (!disposed) setError(cause instanceof Error ? cause.message : String(cause))
+      }
+    }
+    void poll()
+    const timer = window.setInterval(() => { void poll() }, 2000)
+    return () => {
+      disposed = true
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  useEffect(() => {
+    let disposed = false
+    void fetchReleaseStatus().then(next => {
+      if (!disposed) setRelease(next)
+    }).catch(cause => {
+      if (!disposed) setError(cause instanceof Error ? cause.message : String(cause))
+    })
+    return () => { disposed = true }
+  }, [])
 
   const current = snapshot.value === undefined ? null : resolved(snapshot.value)
   const dirty = draft !== null && current !== null && !same(draft, current)
@@ -98,7 +176,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
     return <p className="m4a-settings__message">{t('unavailable')}</p>
   }
 
-  const disabled = saving || !snapshot.writable
+  const disabled = saving || acting || !snapshot.writable
   const setField = <K extends keyof ResolvedConfig>(field: K, value: ResolvedConfig[K]): void => {
     setDraft(previous => previous === null ? previous : { ...previous, [field]: value })
   }
@@ -107,31 +185,102 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
     if (Number.isFinite(parsed)) setField(field, parsed as never)
   }
 
-  const submit = async (): Promise<void> => {
+  const submit = async (next = draft): Promise<void> => {
     setSaving(true)
+    setError('')
     try {
-      await save(draft)
+      await save(next)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+      throw cause
     } finally {
       setSaving(false)
     }
   }
 
+  const launch = async (force = false): Promise<void> => {
+    setActing(true)
+    setError('')
+    try {
+      if (dirty) {
+        await submit()
+        await new Promise(resolve => window.setTimeout(resolve, 700))
+      }
+      const result = await startEngine(force)
+      setStatus(result.status)
+      setConfirmBusy(result.status.phase === 'resource-warning')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setActing(false)
+    }
+  }
+
+  const install = async (): Promise<void> => {
+    setActing(true)
+    setError('')
+    try {
+      const installed = await installLatestEngine()
+      const next = { ...draft, executable: installed.executable, workingDirectory: installed.workingDirectory }
+      setDraft(next)
+      await submit(next)
+      await new Promise(resolve => window.setTimeout(resolve, 700))
+      setRelease(await fetchReleaseStatus(true))
+      setStatus(await fetchEngineStatus())
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setActing(false)
+    }
+  }
+
+  const modeDescription = draft.mode === 'connect'
+    ? t('connectHint')
+    : draft.mode === 'auto'
+      ? t('autoHint')
+      : t('promptHint')
+  const releaseAction = status?.phase === 'missing-executable'
+    ? t('installLatest')
+    : release?.updateAvailable === true
+      ? t('updateNow')
+      : null
+
   return (
     <div className="m4a-settings">
       <header className="m4a-settings__header">
         <h2 className="m4a-settings__title">{t('title')}</h2>
-        <p className="m4a-settings__subtitle">{t('subtitle')}</p>
         <div className="m4a-settings__status">
-          <span className={`m4a-settings__dot${dirty ? ' m4a-settings__dot--dirty' : ''}`} />
-          <span>{!snapshot.writable ? t('readOnly') : dirty ? t('unsaved') : t('saved')}</span>
+          <span className={`m4a-settings__dot m4a-settings__dot--${statusClass(status)}`} />
+          <span>{status?.message ?? t('checkingEngine')}</span>
           <code className="m4a-settings__endpoint" title={endpoint}>{endpoint}</code>
         </div>
+        {status?.models.length ? <p className="m4a-settings__models">{t('syncedModels')}: {status.models.map(model => model.name).join(', ')}</p> : null}
+        {error === '' ? null : <p className="m4a-settings__error">{error}</p>}
+        <div className="m4a-settings__runtime-actions">
+          <button type="button" className="m4a-settings__button m4a-settings__button--primary" disabled={disabled || status?.ready === true || status?.phase === 'starting'} onClick={() => { void launch(false) }}>
+            {acting ? t('working') : dirty ? t('saveAndStart') : t('startNow')}
+          </button>
+          {releaseAction === null ? null : (
+            <button type="button" className="m4a-settings__button" disabled={disabled} onClick={() => { void install() }}>
+              {acting ? t('working') : releaseAction}
+            </button>
+          )}
+          <button type="button" className="m4a-settings__button" disabled={disabled} onClick={() => {
+            setActing(true)
+            void fetchReleaseStatus(true).then(setRelease).catch(cause => { setError(cause instanceof Error ? cause.message : String(cause)) }).finally(() => { setActing(false) })
+          }}>{t('checkUpdates')}</button>
+        </div>
+        {release?.latest === undefined ? null : (
+          <p className="m4a-settings__release">
+            {release.installed?.name ?? t('engineNotManaged')} / {t('latestVersion')}: {release.latest.name}
+          </p>
+        )}
       </header>
 
       <section className="m4a-settings__group">
         <h3 className="m4a-settings__group-title">{t('mode')}</h3>
         <div className="m4a-settings__segmented" role="group" aria-label={t('mode')}>
-          {(['connect', 'auto', 'managed'] as const).map(mode => (
+          {(['connect', 'prompt', 'auto'] as const).map(mode => (
             <button
               key={mode}
               type="button"
@@ -144,6 +293,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
             </button>
           ))}
         </div>
+        <p className="m4a-settings__hint">{modeDescription}</p>
       </section>
 
       <section className="m4a-settings__group">
@@ -200,7 +350,6 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
               </div>
             </Field>
           </div>
-          <Check checked={draft.promptWhenBusy} disabled={disabled} label={t('promptWhenBusy')} onChange={value => { setField('promptWhenBusy', value) }} />
           <Check checked={draft.stopOnUnload} disabled={disabled} label={t('stopOnUnload')} onChange={value => { setField('stopOnUnload', value) }} />
           <Check checked={draft.logOutput} disabled={disabled} label={t('logOutput')} onChange={value => { setField('logOutput', value) }} />
         </section>
@@ -209,11 +358,11 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
       <section className="m4a-settings__group">
         <h3 className="m4a-settings__group-title">{t('model')}</h3>
         <div className="m4a-settings__grid">
-          <Field label={t('contextWindow')}>
-            <input className="m4a-settings__input" type="number" min={1} step={1024} value={draft.contextWindow} disabled={disabled} onChange={event => { numberField('contextWindow', event.target.value) }} />
+          <Field label={t('contextWindow')} hint={t('tokenUnitHint')}>
+            <TokenInput value={draft.contextWindow} disabled={disabled} onChange={value => { setField('contextWindow', value) }} />
           </Field>
-          <Field label={t('maxTokens')}>
-            <input className="m4a-settings__input" type="number" min={1} step={1024} value={draft.maxTokens} disabled={disabled} onChange={event => { numberField('maxTokens', event.target.value) }} />
+          <Field label={t('maxTokens')} hint={t('tokenUnitHint')}>
+            <TokenInput value={draft.maxTokens} disabled={disabled} onChange={value => { setField('maxTokens', value) }} />
           </Field>
         </div>
         <Check checked={draft.vision} disabled={disabled} label={t('vision')} onChange={value => { setField('vision', value) }} />
@@ -245,6 +394,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
       </details>
 
       <div className="m4a-settings__actions">
+        <span className="m4a-settings__save-state">{!snapshot.writable ? t('readOnly') : dirty ? t('unsaved') : t('saved')}</span>
         <button type="button" className="m4a-settings__button" disabled={disabled || !dirty || current === null} onClick={() => { if (current !== null) setDraft(current) }}>
           {t('revert')}
         </button>
@@ -252,6 +402,20 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
           {saving ? t('saving') : t('save')}
         </button>
       </div>
+
+      {!confirmBusy ? null : (
+        <div className="m4a-overlay" role="presentation">
+          <section className="m4a-overlay__dialog" role="alertdialog" aria-modal="true" aria-labelledby="m4a-busy-title">
+            <h2 id="m4a-busy-title" className="m4a-overlay__title">{t('resourceWarningTitle')}</h2>
+            <p className="m4a-overlay__body">{t('resourceWarningBody')}</p>
+            <ul className="m4a-overlay__reasons">{(status?.reasons ?? []).map(reason => <li key={reason}>{reason}</li>)}</ul>
+            <div className="m4a-overlay__actions">
+              <button type="button" className="m4a-settings__button" disabled={acting} onClick={() => { setConfirmBusy(false) }}>{t('cancel')}</button>
+              <button type="button" className="m4a-settings__button m4a-settings__button--danger" disabled={acting} onClick={() => { void launch(true) }}>{acting ? t('startingNow') : t('startAnyway')}</button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   )
 }

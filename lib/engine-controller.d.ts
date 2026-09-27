@@ -1,4 +1,6 @@
-export type LaunchMode = 'connect' | 'auto' | 'managed';
+export type LaunchMode = 'connect' | 'prompt' | 'auto' | 'managed';
+export type EffectiveLaunchMode = Exclude<LaunchMode, 'managed'>;
+export type EnginePhase = 'checking' | 'ready' | 'offline' | 'starting' | 'resource-warning' | 'missing-executable' | 'missing-arguments' | 'duplicate-process' | 'error';
 export interface EngineConfig {
     mode?: LaunchMode;
     protocol?: 'http' | 'https';
@@ -46,13 +48,28 @@ export interface StartupPrompt {
     reasons: string[];
     resources?: ResourceSnapshot;
 }
+export interface EngineRuntimeStatus {
+    phase: EnginePhase;
+    endpoint: string;
+    mode: EffectiveLaunchMode;
+    ready: boolean;
+    canStart: boolean;
+    executable?: string;
+    message?: string;
+    reasons?: string[];
+    resources?: ResourceSnapshot;
+    processes?: RunningProcess[];
+}
+export interface EngineStartResult {
+    ok: boolean;
+    status: EngineRuntimeStatus;
+}
 export interface EngineControllerDependencies {
     detectProcesses(processNames: string[]): Promise<RunningProcess[]>;
     probeResources(executable: string, config: EngineConfig): Promise<ResourceSnapshot>;
-    confirmBusyStart(prompt: StartupPrompt): Promise<boolean>;
 }
 export declare const DEFAULT_CONFIG: {
-    readonly mode: "connect";
+    readonly mode: "prompt";
     readonly protocol: "http";
     readonly host: "127.0.0.1";
     readonly port: 8080;
@@ -78,6 +95,7 @@ export declare const DEFAULT_CONFIG: {
 type ResolvedEngineConfig = {
     [Key in keyof Required<EngineConfig>]: Required<EngineConfig>[Key];
 };
+export declare function effectiveLaunchMode(mode: LaunchMode | undefined): EffectiveLaunchMode;
 export declare function endpointFromConfig(config: EngineConfig): string;
 export declare function validateEndpoint(endpoint: string, allowRemoteEndpoint?: boolean): URL;
 export declare function probeHealth(endpoint: URL, timeoutMs: number, apiKeyEnv?: string, parentSignal?: AbortSignal): Promise<boolean>;
@@ -85,7 +103,6 @@ export declare function resolveEngineExecutable(config: EngineConfig): Promise<s
 export declare function parseTasklistCsv(output: string): RunningProcess[];
 export declare function detectRunningEngines(processNames: string[]): Promise<RunningProcess[]>;
 export declare function probeEngineResources(executable: string, config: EngineConfig): Promise<ResourceSnapshot>;
-export declare function confirmBusyStartWithElectron(prompt: StartupPrompt): Promise<boolean>;
 export declare class EngineController {
     private readonly logger;
     readonly config: ResolvedEngineConfig;
@@ -94,14 +111,20 @@ export declare class EngineController {
     private readonly dependencies;
     private child;
     private readers;
-    private startPromise?;
+    private initialPromise?;
+    private startPromise;
     private stopping;
+    private currentStatus;
     constructor(config: EngineConfig, logger?: EngineLogger, dependencies?: Partial<EngineControllerDependencies>);
+    statusSnapshot(): EngineRuntimeStatus;
+    refreshStatus(): Promise<EngineRuntimeStatus>;
     ensureReady(): Promise<boolean>;
-    private blocked;
+    requestStart(force?: boolean): Promise<EngineStartResult>;
+    private initialize;
+    private setStatus;
     private processNames;
     private findExistingEngine;
-    private resourcesAllowStart;
+    private resourceWarning;
     private start;
     private launch;
     dispose(): Promise<void>;

@@ -8,7 +8,7 @@ export declare const SETTINGS_NAMESPACE: import("@deepseek-ai/dsh-settings").Set
 export interface Config extends EngineConfig, ModelProviderConfig {
 }
 export declare const Config: z<Schemastery.ObjectS<{
-    mode: z<"connect" | "auto" | "managed", "connect" | "auto" | "managed">;
+    mode: z<"connect" | "prompt" | "auto" | "managed", "connect" | "prompt" | "auto" | "managed">;
     protocol: z<"http" | "https", "http" | "https">;
     host: z<string, string>;
     port: z<number, number>;
@@ -37,7 +37,7 @@ export declare const Config: z<Schemastery.ObjectS<{
     modelRefreshIntervalMs: z<number, number>;
     modelDiscoveryTimeoutMs: z<number, number>;
 }>, Schemastery.ObjectT<{
-    mode: z<"connect" | "auto" | "managed", "connect" | "auto" | "managed">;
+    mode: z<"connect" | "prompt" | "auto" | "managed", "connect" | "prompt" | "auto" | "managed">;
     protocol: z<"http" | "https", "http" | "https">;
     host: z<string, string>;
     port: z<number, number>;
@@ -71,7 +71,7 @@ declare const plugin: {
     name: string;
     inject: string[];
     Config: z<Schemastery.ObjectS<{
-        mode: z<"connect" | "auto" | "managed", "connect" | "auto" | "managed">;
+        mode: z<"connect" | "prompt" | "auto" | "managed", "connect" | "prompt" | "auto" | "managed">;
         protocol: z<"http" | "https", "http" | "https">;
         host: z<string, string>;
         port: z<number, number>;
@@ -100,7 +100,7 @@ declare const plugin: {
         modelRefreshIntervalMs: z<number, number>;
         modelDiscoveryTimeoutMs: z<number, number>;
     }>, Schemastery.ObjectT<{
-        mode: z<"connect" | "auto" | "managed", "connect" | "auto" | "managed">;
+        mode: z<"connect" | "prompt" | "auto" | "managed", "connect" | "prompt" | "auto" | "managed">;
         protocol: z<"http" | "https", "http" | "https">;
         host: z<string, string>;
         port: z<number, number>;
@@ -132,8 +132,11 @@ declare const plugin: {
     apply: typeof apply;
 };
 export default plugin;
-export { EngineController, detectRunningEngines, endpointFromConfig, parseTasklistCsv, probeEngineResources, probeHealth, resolveEngineExecutable, validateEndpoint, } from './engine-controller.js';
-export type { EngineConfig, EngineLogger, LaunchMode, ResourceSnapshot, RunningProcess, } from './engine-controller.js';
+export { EngineController, detectRunningEngines, effectiveLaunchMode, endpointFromConfig, parseTasklistCsv, probeEngineResources, probeHealth, resolveEngineExecutable, validateEndpoint, } from './engine-controller.js';
+export type { EffectiveLaunchMode, EngineConfig, EngineLogger, EnginePhase, EngineRuntimeStatus, EngineStartResult, LaunchMode, ResourceSnapshot, RunningProcess, } from './engine-controller.js';
+export { EngineReleaseManager, releaseFromTag, selectRelease } from './engine-release.js';
+export type { EngineInstallProgress, EngineInstallStage, EngineReleaseStatus, InstalledEngine, SelectedRelease } from './engine-release.js';
+export { ENGINE_PATHS, isLoopbackRequest, makeEngineRoutes } from './host-routes.js';
 export { discoverModels, ModelProviderBridge, providerProfile } from './model-provider.js';
 export type { DiscoveredModel, LoaderLike, ModelProviderConfig } from './model-provider.js';
 //# sourceMappingURL=index.d.ts.map

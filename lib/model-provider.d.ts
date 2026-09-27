@@ -56,8 +56,11 @@ export declare class ModelProviderBridge {
     private lastError;
     private syncInFlight;
     private didUpdate;
+    private discovered;
     constructor(loader: LoaderLike, endpoint: URL, config: ModelProviderConfig, logger: EngineLogger);
     run(): Promise<void>;
+    get models(): DiscoveredModel[];
+    refreshNow(): Promise<void>;
     private syncOnce;
     dispose(): Promise<void>;
 }

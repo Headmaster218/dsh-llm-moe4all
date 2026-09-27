@@ -32,7 +32,6 @@ function dependencies(overrides: Partial<EngineControllerDependencies> = {}): En
   return {
     detectProcesses: async () => [],
     probeResources: async () => idleResources,
-    confirmBusyStart: async () => false,
     ...overrides,
   }
 }
@@ -131,9 +130,8 @@ test('an existing engine process prevents a second launch regardless of endpoint
   await controller.dispose()
 })
 
-test('exactly half-free resources require confirmation and cancellation leaves the engine stopped', async () => {
+test('exactly half-free resources return a structured confirmation request', async () => {
   const port = await unusedPort()
-  let prompted = false
   const controller = new EngineController({
     mode: 'auto',
     endpoint: `http://127.0.0.1:${port}/v1`,
@@ -145,20 +143,17 @@ test('exactly half-free resources require confirmation and cancellation leaves t
       ramAvailableBytes: idleResources.ramTotalBytes / 2,
       vramAvailableBytes: idleResources.vramTotalBytes / 2,
     }),
-    confirmBusyStart: async () => {
-      prompted = true
-      return false
-    },
   }))
 
   assert.equal(await controller.ensureReady(), false)
-  assert.equal(prompted, true)
+  const status = controller.statusSnapshot()
+  assert.equal(status.phase, 'resource-warning')
+  assert.equal(status.reasons?.length, 2)
   await controller.dispose()
 })
 
 test('busy startup proceeds only after an explicit confirmation', async () => {
   const port = await unusedPort()
-  let prompts = 0
   const controller = new EngineController({
     mode: 'auto',
     endpoint: `http://127.0.0.1:${port}/v1`,
@@ -175,13 +170,32 @@ test('busy startup proceeds only after an explicit confirmation', async () => {
       ...idleResources,
       ramAvailableBytes: idleResources.ramTotalBytes / 4,
     }),
-    confirmBusyStart: async () => {
-      prompts += 1
-      return true
+  }))
+
+  assert.equal(await controller.ensureReady(), false)
+  assert.equal(controller.statusSnapshot().phase, 'resource-warning')
+  assert.equal((await controller.requestStart(true)).ok, true)
+  await controller.dispose()
+})
+
+test('prompt mode never starts the engine before a manual request', async () => {
+  const port = await unusedPort()
+  let processChecks = 0
+  const controller = new EngineController({
+    mode: 'prompt',
+    endpoint: `http://127.0.0.1:${port}/v1`,
+    executable: process.execPath,
+    arguments: [join(import.meta.dirname, 'fake-engine.mjs'), String(port)],
+    healthTimeoutMs: 100,
+  }, quietLogger, dependencies({
+    detectProcesses: async () => {
+      processChecks += 1
+      return []
     },
   }))
 
-  assert.equal(await controller.ensureReady(), true)
-  assert.equal(prompts, 1)
+  assert.equal(await controller.ensureReady(), false)
+  assert.equal(controller.statusSnapshot().phase, 'offline')
+  assert.equal(processChecks, 0)
   await controller.dispose()
 })

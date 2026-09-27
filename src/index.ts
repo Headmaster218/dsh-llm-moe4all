@@ -1,8 +1,11 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 
 import { EngineController, type EngineConfig } from './engine-controller.js'
+import { EngineReleaseManager } from './engine-release.js'
+import { makeEngineRoutes } from './host-routes.js'
 import { ModelProviderBridge, type LoaderLike, type ModelProviderConfig } from './model-provider.js'
 
 export const name = 'moe4all-engine'
@@ -12,7 +15,7 @@ export const SETTINGS_NAMESPACE = settingsNamespace('moe4all-engine')
 export interface Config extends EngineConfig, ModelProviderConfig {}
 
 export const Config = z.object({
-  mode: z.union(['connect', 'auto', 'managed']).default('connect'),
+  mode: z.union(['connect', 'prompt', 'auto', 'managed']).default('prompt'),
   protocol: z.union(['http', 'https']).default('http'),
   host: z.string().default('127.0.0.1'),
   port: z.number().step(1).min(1).max(65_535).default(8080),
@@ -56,9 +59,10 @@ function startRuntime(ctx: Context, loader: LoaderLike, config: Config): ActiveR
     ctx.logger.error(error instanceof Error ? error : new Error(String(error)))
     return false
   })
-  const discovery = startup.then(() => provider.run()).catch((error: unknown) => {
+  const discovery = provider.run().catch((error: unknown) => {
     ctx.logger.error(error instanceof Error ? error : new Error(String(error)))
   })
+  void startup.then((ready) => ready ? provider.refreshNow() : undefined)
   return { controller, provider, startup, discovery }
 }
 
@@ -74,6 +78,7 @@ function configSignature(config: Config): string {
 
 export function apply(ctx: Context, config: Config): () => Promise<void> {
   const loader = (ctx as Context & { loader: LoaderLike }).loader
+  const releases = new EngineReleaseManager()
   let source = (): Config => config
   let active: ActiveRuntime | undefined = startRuntime(ctx, loader, config)
   let activeSignature = configSignature(config)
@@ -109,6 +114,21 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
     onChange: scheduleRestart,
   })
 
+  ctx.inject(['webServer'], (routeCtx: Context) => {
+    const webServer = (routeCtx as Context & { webServer: WebServer }).webServer
+    const routes = makeEngineRoutes({
+      controller: () => active?.controller,
+      models: () => active?.provider.models ?? [],
+      refreshModels: async () => { await active?.provider.refreshNow() },
+      configuredExecutable: () => source().executable ?? '',
+      releases,
+    })
+    routeCtx.effect(() => {
+      const disposers = routes.map((route) => webServer.register(route))
+      return () => { for (const dispose of disposers) dispose() }
+    }, 'moe4all-engine: local control routes')
+  })
+
   return async () => {
     disposed = true
     if (restartTimer !== undefined) clearTimeout(restartTimer)
@@ -125,6 +145,7 @@ export default plugin
 export {
   EngineController,
   detectRunningEngines,
+  effectiveLaunchMode,
   endpointFromConfig,
   parseTasklistCsv,
   probeEngineResources,
@@ -133,11 +154,18 @@ export {
   validateEndpoint,
 } from './engine-controller.js'
 export type {
+  EffectiveLaunchMode,
   EngineConfig,
   EngineLogger,
+  EnginePhase,
+  EngineRuntimeStatus,
+  EngineStartResult,
   LaunchMode,
   ResourceSnapshot,
   RunningProcess,
 } from './engine-controller.js'
+export { EngineReleaseManager, releaseFromTag, selectRelease } from './engine-release.js'
+export type { EngineInstallProgress, EngineInstallStage, EngineReleaseStatus, InstalledEngine, SelectedRelease } from './engine-release.js'
+export { ENGINE_PATHS, isLoopbackRequest, makeEngineRoutes } from './host-routes.js'
 export { discoverModels, ModelProviderBridge, providerProfile } from './model-provider.js'
 export type { DiscoveredModel, LoaderLike, ModelProviderConfig } from './model-provider.js'

@@ -166,6 +166,7 @@ export class ModelProviderBridge {
   private lastError = ''
   private syncInFlight: Promise<void> | undefined
   private didUpdate = false
+  private discovered: DiscoveredModel[] = []
 
   constructor(
     private readonly loader: LoaderLike,
@@ -179,10 +180,7 @@ export class ModelProviderBridge {
       this.entry = await waitForAdapter(this.loader, this.abort.signal)
       this.originalConfig = this.entry.options.config
       while (!this.abort.signal.aborted) {
-        const sync = this.syncOnce()
-        this.syncInFlight = sync
-        await sync
-        if (this.syncInFlight === sync) this.syncInFlight = undefined
+        await this.refreshNow()
         if (this.abort.signal.aborted) break
         await delay(
           this.config.modelRefreshIntervalMs ?? DEFAULTS.modelRefreshIntervalMs,
@@ -193,6 +191,29 @@ export class ModelProviderBridge {
     } catch (error) {
       if (!this.abort.signal.aborted) throw error
     }
+  }
+
+  get models(): DiscoveredModel[] {
+    return this.discovered.map((model) => ({ ...model }))
+  }
+
+  async refreshNow(): Promise<void> {
+    const deadline = Date.now() + (this.config.modelDiscoveryTimeoutMs ?? DEFAULTS.modelDiscoveryTimeoutMs)
+    while (this.entry === undefined && !this.abort.signal.aborted && Date.now() < deadline) {
+      try {
+        await delay(50, undefined, { signal: this.abort.signal })
+      } catch (error) {
+        if (this.abort.signal.aborted) return
+        throw error
+      }
+    }
+    if (this.entry === undefined || this.abort.signal.aborted) return
+    if (this.syncInFlight !== undefined) return this.syncInFlight
+    const sync = this.syncOnce().finally(() => {
+      if (this.syncInFlight === sync) this.syncInFlight = undefined
+    })
+    this.syncInFlight = sync
+    await sync
   }
 
   private async syncOnce(): Promise<void> {
@@ -206,6 +227,7 @@ export class ModelProviderBridge {
       await fiber.update(configWithProvider(this.entry?.options.config, profile), true)
       this.didUpdate = true
       await fiber.await?.()
+      this.discovered = models
       this.signature = signature
       this.lastError = ''
       this.logger.info(`MoE4All discovered ${models.length} chat model(s): ${models.map((model) => model.id).join(', ')}`)

@@ -5,7 +5,7 @@
     - id: moe4all-engine
       name: dsh-llm-moe4all
       config:
-        mode: connect
+        mode: prompt
         protocol: http
         host: 127.0.0.1
         port: 8080
