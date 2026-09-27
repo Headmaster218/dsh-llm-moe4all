@@ -1,0 +1,19 @@
+import type { ReactNode } from 'react';
+import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client';
+import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
+import type { Config } from '../index.js';
+import type { Moe4AllLocaleKey } from './locales.js';
+export interface Moe4AllSettingsInjected {
+    hooks: {
+        moe4AllSettings: SettingsScope<Config>;
+    };
+    save(next: Config): Promise<void>;
+}
+export type Moe4AllSettingsProps = PropsRuntime<'settings.section'> & PropsLocale<'settings.moe4all'> & InjectFace<Moe4AllSettingsInjected>;
+export declare function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode;
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+    interface LocaleNamespaceMap {
+        'settings.moe4all': Moe4AllLocaleKey;
+    }
+}
+//# sourceMappingURL=Moe4AllSettings.d.ts.map

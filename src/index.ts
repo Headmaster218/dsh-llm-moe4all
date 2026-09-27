@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
+import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 
 import { EngineController, type EngineConfig } from './engine-controller.js'
@@ -6,6 +7,7 @@ import { ModelProviderBridge, type LoaderLike, type ModelProviderConfig } from '
 
 export const name = 'moe4all-engine'
 export const inject = ['loader']
+export const SETTINGS_NAMESPACE = settingsNamespace('moe4all-engine')
 
 export interface Config extends EngineConfig, ModelProviderConfig {}
 
@@ -40,9 +42,15 @@ export const Config = z.object({
   modelDiscoveryTimeoutMs: z.number().step(1).min(100).default(3_000),
 })
 
-export function apply(ctx: Context, config: Config): () => Promise<void> {
+interface ActiveRuntime {
+  controller: EngineController
+  provider: ModelProviderBridge
+  startup: Promise<boolean>
+  discovery: Promise<void>
+}
+
+function startRuntime(ctx: Context, loader: LoaderLike, config: Config): ActiveRuntime {
   const controller = new EngineController(config, ctx.logger)
-  const loader = (ctx as Context & { loader: LoaderLike }).loader
   const provider = new ModelProviderBridge(loader, controller.endpoint, config, ctx.logger)
   const startup = controller.ensureReady().catch((error: unknown) => {
     ctx.logger.error(error instanceof Error ? error : new Error(String(error)))
@@ -51,11 +59,63 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
   const discovery = startup.then(() => provider.run()).catch((error: unknown) => {
     ctx.logger.error(error instanceof Error ? error : new Error(String(error)))
   })
+  return { controller, provider, startup, discovery }
+}
+
+async function stopRuntime(runtime: ActiveRuntime): Promise<void> {
+  await runtime.provider.dispose()
+  await runtime.controller.dispose()
+  await Promise.all([runtime.startup, runtime.discovery])
+}
+
+function configSignature(config: Config): string {
+  return JSON.stringify(config)
+}
+
+export function apply(ctx: Context, config: Config): () => Promise<void> {
+  const loader = (ctx as Context & { loader: LoaderLike }).loader
+  let source = (): Config => config
+  let active: ActiveRuntime | undefined = startRuntime(ctx, loader, config)
+  let activeSignature = configSignature(config)
+  let transition = Promise.resolve()
+  let restartTimer: ReturnType<typeof setTimeout> | undefined
+  let disposed = false
+
+  const scheduleRestart = (): void => {
+    if (restartTimer !== undefined) clearTimeout(restartTimer)
+    restartTimer = setTimeout(() => {
+      restartTimer = undefined
+      const next = source()
+      const nextSignature = configSignature(next)
+      if (disposed || nextSignature === activeSignature) return
+      transition = transition.then(async () => {
+        if (disposed) return
+        const previous = active
+        active = undefined
+        if (previous !== undefined) await stopRuntime(previous)
+        if (disposed) return
+        active = startRuntime(ctx, loader, next)
+        activeSignature = nextSignature
+      }).catch((error: unknown) => {
+        ctx.logger.error(error instanceof Error ? error : new Error(String(error)))
+      })
+    }, 250)
+  }
+
+  installSettingsSection(ctx, SETTINGS_NAMESPACE, Config, config, {
+    setSource(current) {
+      source = current
+    },
+    onChange: scheduleRestart,
+  })
 
   return async () => {
-    await provider.dispose()
-    await controller.dispose()
-    await Promise.all([startup, discovery])
+    disposed = true
+    if (restartTimer !== undefined) clearTimeout(restartTimer)
+    await transition
+    const current = active
+    active = undefined
+    if (current !== undefined) await stopRuntime(current)
   }
 }
 

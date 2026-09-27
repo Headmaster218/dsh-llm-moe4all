@@ -4,6 +4,7 @@ import { type EngineConfig } from './engine-controller.js';
 import { type ModelProviderConfig } from './model-provider.js';
 export declare const name = "moe4all-engine";
 export declare const inject: string[];
+export declare const SETTINGS_NAMESPACE: import("@deepseek-ai/dsh-settings").SettingsNamespace;
 export interface Config extends EngineConfig, ModelProviderConfig {
 }
 export declare const Config: z<Schemastery.ObjectS<{

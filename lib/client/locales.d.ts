@@ -1,0 +1,4 @@
+export type Moe4AllLocaleKey = 'nav' | 'title' | 'subtitle' | 'loading' | 'unavailable' | 'readOnly' | 'saved' | 'unsaved' | 'saving' | 'save' | 'revert' | 'mode' | 'connect' | 'auto' | 'managed' | 'connection' | 'protocol' | 'host' | 'port' | 'apiBasePath' | 'endpoint' | 'endpointHint' | 'apiKeyEnv' | 'allowRemoteEndpoint' | 'startup' | 'executable' | 'workingDirectory' | 'arguments' | 'argumentsHint' | 'minimumFreeRam' | 'minimumFreeVram' | 'promptWhenBusy' | 'stopOnUnload' | 'logOutput' | 'model' | 'contextWindow' | 'maxTokens' | 'vision' | 'advanced' | 'processNames' | 'excludeModels' | 'listHint' | 'resourceProbeTimeout' | 'startupTimeout' | 'healthTimeout' | 'pollInterval' | 'shutdownTimeout' | 'modelRefreshInterval' | 'modelDiscoveryTimeout';
+export declare const en: Record<Moe4AllLocaleKey, string>;
+export declare const zh: Record<Moe4AllLocaleKey, string>;
+//# sourceMappingURL=locales.d.ts.map
