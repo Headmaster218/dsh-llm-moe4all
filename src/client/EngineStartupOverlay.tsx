@@ -4,20 +4,16 @@ import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
 
 import type { Config } from '../index.js'
 import type { EngineControlStatus } from '../host-routes.js'
+import type { ModelDownloadProgress, RecommendedModel, RecommendedModelKind } from '../model-download.js'
 import type { LocalModelFiles, ModelFileKind } from '../model-files.js'
 import type { EngineInstallProgress, EngineReleaseStatus, InstalledEngine } from '../engine-release.js'
-import { fetchEngineStatus, fetchReleaseStatus, installLatestEngine, installLocalEngine, scanModelPath, startEngine, validateModelPaths } from './engine-api.js'
+import { fetchEngineStatus, fetchModelCatalog, fetchModelDownload, fetchReleaseStatus, installLatestEngine, installLocalEngine, pickModelFile, scanModelPath, startEngine, startModelDownload, validateModelPaths } from './engine-api.js'
 import { buildEngineArguments, type EngineAutoProfile } from './engine-setup.js'
 import type { Moe4AllLocaleKey } from './locales.js'
 import { formatTokenValue, parseTokenValue } from './token-value.js'
 
 type Translate = (key: Moe4AllLocaleKey) => string
 const OFFICIAL_RELEASES = 'https://github.com/Headmaster218/MoE4All/releases/latest'
-const RECOMMENDED_FLASH = 'https://huggingface.co/AtomicChat/Qwen3.8-Flash-Next-GGUF/tree/main/Qwen3.8-Flash-Next-AD-4.27bpw-Q4_K_M-M64'
-const RECOMMENDED_35B = 'https://huggingface.co/mudler/Qwen3.6-35B-A3B-APEX-GGUF/resolve/main/Qwen3.6-35B-A3B-APEX-I-Balanced.gguf?download=true'
-const RECOMMENDED_VISION = 'https://huggingface.co/AtomicChat/Qwen3.8-Flash-Next-GGUF/resolve/main/mmproj-Qwen3.8-Flash-Next-F16.gguf?download=true'
-const RECOMMENDED_EMBEDDING = 'https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF/resolve/main/Qwen3-Embedding-0.6B-Q8_0.gguf?download=true'
-const RECOMMENDED_MTP = 'https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF/resolve/main/MTP/mtp-Qwen3.8-Flash-Next-shared-Q4_K_M.gguf?download=true'
 
 interface Props {
   scope: SettingsScope<Config>
@@ -94,7 +90,12 @@ export function EngineStartupOverlay({ scope, t, pickDirectory }: Props): ReactN
   const [localPath, setLocalPath] = useState('')
   const [setupInitialized, setSetupInitialized] = useState(false)
   const [modelPath, setModelPath] = useState('')
+  const [modelDirectory, setModelDirectory] = useState('')
   const [modelChoices, setModelChoices] = useState<string[]>([])
+  const [recommendedModels, setRecommendedModels] = useState<RecommendedModel[]>([])
+  const [recommendedModelId, setRecommendedModelId] = useState('qwen38-flash-ad-q4km')
+  const [modelDownload, setModelDownload] = useState<ModelDownloadProgress>({ stage: 'idle', downloadedBytes: 0 })
+  const [nativeFilePicker, setNativeFilePicker] = useState(false)
   const [visionEnabled, setVisionEnabled] = useState(false)
   const [visionPath, setVisionPath] = useState('')
   const [embeddingEnabled, setEmbeddingEnabled] = useState(false)
@@ -102,7 +103,7 @@ export function EngineStartupOverlay({ scope, t, pickDirectory }: Props): ReactN
   const [embeddingIdleTimeout, setEmbeddingIdleTimeout] = useState('60')
   const [setupHost, setSetupHost] = useState('127.0.0.1')
   const [setupPort, setSetupPort] = useState('8080')
-  const [setupContext, setSetupContext] = useState('256k')
+  const [setupContext, setSetupContext] = useState('160k')
   const [setupMaxTokens, setSetupMaxTokens] = useState('100k')
   const [setupParallel, setSetupParallel] = useState('1')
   const [setupProfile, setSetupProfile] = useState<EngineAutoProfile>('conservative')
@@ -143,6 +144,35 @@ export function EngineStartupOverlay({ scope, t, pickDirectory }: Props): ReactN
 
   useEffect(() => {
     let disposed = false
+    void fetchModelCatalog().then((next) => {
+      if (disposed) return
+      setRecommendedModels(next.models)
+      setModelDownload(next.download)
+      setNativeFilePicker(next.capabilities.nativeFilePicker)
+    }).catch((cause) => {
+      if (!disposed) setError(cause instanceof Error ? cause.message : String(cause))
+    })
+    return () => { disposed = true }
+  }, [])
+
+  useEffect(() => {
+    if (modelDownload.stage !== 'downloading') return
+    let disposed = false
+    const timer = window.setInterval(() => {
+      void fetchModelDownload().then((next) => {
+        if (!disposed) setModelDownload(next)
+      }).catch((cause) => {
+        if (!disposed) setError(cause instanceof Error ? cause.message : String(cause))
+      })
+    }, 750)
+    return () => {
+      disposed = true
+      window.clearInterval(timer)
+    }
+  }, [modelDownload.stage])
+
+  useEffect(() => {
+    let disposed = false
     void fetchReleaseStatus().then((next) => {
       if (!disposed) setRelease(next)
     }).catch((cause) => {
@@ -155,17 +185,22 @@ export function EngineStartupOverlay({ scope, t, pickDirectory }: Props): ReactN
     if (config === undefined || status?.phase !== 'missing-arguments' || setupInitialized) return
     setSetupHost(config.host ?? '127.0.0.1')
     setSetupPort(String(config.port ?? 8080))
-    setSetupContext(formatTokenValue(config.contextWindow ?? 262_144))
+    setSetupContext(formatTokenValue(config.contextWindow ?? 163_840))
     setSetupMaxTokens(formatTokenValue(config.maxTokens ?? 102_400))
     setSetupProfile(config.arguments?.includes('device.auto_profile=aggressive') === true ? 'aggressive' : 'conservative')
     setSetupMtp(config.arguments?.includes('spec.mtp=true') === true)
     setSetupAutoStart(effectiveMode(config.mode) === 'auto')
+    setModelDirectory(config.modelDirectory ?? '')
     setSetupInitialized(true)
   }, [config, setupInitialized, status?.phase])
 
   if (config === undefined || status === null) return null
   const mode = effectiveMode(config.mode)
   if (mode === 'connect') return null
+  const mainRecommendations = recommendedModels.filter(item => item.kind === 'main')
+  const selectedRecommendation = mainRecommendations.find(item => item.id === recommendedModelId) ?? mainRecommendations[0]
+  const recommendation = (kind: RecommendedModelKind): RecommendedModel | undefined => recommendedModels.find(item => item.kind === kind)
+  const activeDownloadModel = recommendedModels.find(item => item.id === modelDownload.modelId)
 
   const launch = async (force: boolean, remember = false): Promise<void> => {
     setBusy(true)
@@ -271,6 +306,49 @@ export function EngineStartupOverlay({ scope, t, pickDirectory }: Props): ReactN
     }
   }
 
+  const chooseModelFile = async (target: ModelFileKind = 'main'): Promise<void> => {
+    try {
+      const path = await pickModelFile()
+      if (path !== undefined) await discover(path, target)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    }
+  }
+
+  const chooseDownloadDirectory = async (): Promise<void> => {
+    try {
+      const directory = await pickDirectory()
+      if (directory !== null) setModelDirectory(directory)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    }
+  }
+
+  const monitorModelDownload = async (selected: RecommendedModel): Promise<void> => {
+    while (true) {
+      await new Promise(resolve => window.setTimeout(resolve, 750))
+      const next = await fetchModelDownload()
+      setModelDownload(next)
+      if (next.stage === 'downloading') continue
+      if (next.stage === 'error') throw new Error(next.error ?? 'Model download failed.')
+      if (next.stage !== 'complete' || next.selectedFile === undefined) return
+      const target: ModelFileKind = selected.kind === 'main' ? 'main' : selected.kind
+      applyDiscoveredFiles(await scanModelPath(next.selectedFile), target)
+      return
+    }
+  }
+
+  const downloadRecommendation = async (selected: RecommendedModel): Promise<void> => {
+    setError('')
+    try {
+      const initial = await startModelDownload(selected.id, modelDirectory)
+      setModelDownload(initial)
+      await monitorModelDownload(selected)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    }
+  }
+
   const saveSetupAndStart = async (): Promise<void> => {
     setBusy(true)
     setError('')
@@ -324,6 +402,7 @@ export function EngineStartupOverlay({ scope, t, pickDirectory }: Props): ReactN
         scope.set('arguments', arguments_),
         scope.set('contextWindow', contextWindow),
         scope.set('maxTokens', maxTokens),
+        scope.set('modelDirectory', modelDirectory.trim()),
         scope.set('vision', visionEnabled),
       ])
       const ready = await waitForRuntime()
@@ -336,6 +415,45 @@ export function EngineStartupOverlay({ scope, t, pickDirectory }: Props): ReactN
     } finally {
       setBusy(false)
     }
+  }
+
+  if (status.phase === 'starting' && !dismissed) {
+    return (
+      <ModalFrame title={t('startupProgressTitle')}>
+        <p className="m4a-overlay__body">{t('startupProgressBody')}</p>
+        <div className="m4a-overlay__progress">
+          <progress />
+          <span>{status.message ?? t('startingNow')}</span>
+        </div>
+        {status.adjustedRamBudgetBytes === undefined ? null : (
+          <p className="m4a-overlay__notice">{t('ramBudgetAdjusted')} {formatBytes(status.adjustedRamBudgetBytes)}</p>
+        )}
+        <div className="m4a-overlay__startup-output">
+          <span className="m4a-settings__label">{t('startupOutput')}</span>
+          <pre>{(status.startupLines ?? []).join('\n') || t('checkingEngine')}</pre>
+        </div>
+      </ModalFrame>
+    )
+  }
+
+  if (status.phase === 'error' && !dismissed) {
+    return (
+      <ModalFrame title={t('startupFailedTitle')}>
+        <p className="m4a-overlay__error">{status.message ?? error}</p>
+        {(status.startupLines?.length ?? 0) === 0 ? null : (
+          <div className="m4a-overlay__startup-output">
+            <span className="m4a-settings__label">{t('startupOutput')}</span>
+            <pre>{status.startupLines!.join('\n')}</pre>
+          </div>
+        )}
+        <div className="m4a-overlay__actions">
+          <button type="button" className="m4a-settings__button" disabled={busy} onClick={() => { setDismissed(true) }}>{t('notNow')}</button>
+          <button type="button" className="m4a-settings__button m4a-settings__button--primary" disabled={busy} onClick={() => { void launch(false) }}>
+            {busy ? t('startingNow') : t('retryStart')}
+          </button>
+        </div>
+      </ModalFrame>
+    )
   }
 
   if (status.phase === 'resource-warning' && !dismissed) {
@@ -407,15 +525,61 @@ export function EngineStartupOverlay({ scope, t, pickDirectory }: Props): ReactN
         <section className="m4a-overlay__section">
           <div className="m4a-overlay__section-heading">
             <h3>{t('modelsAndFeatures')}</h3>
-            <div className="m4a-overlay__download-links">
-              <a className="m4a-settings__button m4a-settings__button--link" href={RECOMMENDED_FLASH} target="_blank" rel="noreferrer">{t('downloadFlash')}</a>
-              <a className="m4a-settings__button m4a-settings__button--link" href={RECOMMENDED_35B} target="_blank" rel="noreferrer">{t('download35b')}</a>
-            </div>
+          </div>
+          <div className="m4a-overlay__recommendation">
+            <label className="m4a-settings__field">
+              <span className="m4a-settings__label">{t('recommendedModel')}</span>
+              <select className="m4a-settings__select" value={selectedRecommendation?.id ?? ''} disabled={modelDownload.stage === 'downloading'} onChange={event => { setRecommendedModelId(event.target.value) }}>
+                {mainRecommendations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            </label>
+            {selectedRecommendation === undefined ? null : (
+              <div className="m4a-overlay__model-details">
+                <span>{selectedRecommendation.architecture}</span>
+                <span>{selectedRecommendation.quantization}</span>
+                <span>{t('downloadSize')}: {formatBytes(selectedRecommendation.totalBytes)}</span>
+                <span>{t('fileCount')}: {selectedRecommendation.files.length}</span>
+                <span>{t('supportsVision')}: {selectedRecommendation.supportsVision ? 'Yes' : 'No'}</span>
+                <span>{t('supportsMtp')}: {selectedRecommendation.supportsMtp ? 'Yes' : 'No'}</span>
+              </div>
+            )}
+            <label className="m4a-settings__field">
+              <span className="m4a-settings__label">{t('modelDirectory')}</span>
+              <div className="m4a-overlay__path-row">
+                <input className="m4a-settings__input" value={modelDirectory} disabled={modelDownload.stage === 'downloading'} spellCheck={false} placeholder="D:\\Models" onChange={event => { setModelDirectory(event.target.value) }} />
+                <button type="button" className="m4a-settings__button" disabled={modelDownload.stage === 'downloading'} onClick={() => { void chooseDownloadDirectory() }}>{t('chooseDirectory')}</button>
+              </div>
+              <span className="m4a-settings__hint">{t('downloadToDirectory')}</span>
+            </label>
+            {selectedRecommendation === undefined ? null : (
+              <div className="m4a-overlay__download-actions">
+                <a href={selectedRecommendation.sourceUrl} target="_blank" rel="noreferrer">{t('sourcePage')}</a>
+                <button
+                  type="button"
+                  className="m4a-settings__button m4a-settings__button--primary"
+                  disabled={modelDirectory.trim() === '' || modelDownload.stage === 'downloading'}
+                  onClick={() => { void downloadRecommendation(selectedRecommendation) }}
+                >
+                  {modelDownload.stage === 'error' && modelDownload.modelId === selectedRecommendation.id ? t('modelDownloadRetry') : t('downloadRecommended')}
+                </button>
+              </div>
+            )}
+            {selectedRecommendation === undefined || modelDownload.modelId !== selectedRecommendation.id || modelDownload.stage === 'idle' ? null : (
+              <div className="m4a-overlay__progress">
+                <progress max={100} value={modelDownload.percent} />
+                <span>
+                  {modelDownload.stage === 'complete' ? t('modelDownloadComplete') : t('modelDownloadProgress')}
+                  {' '}{formatBytes(modelDownload.downloadedBytes)} / {formatBytes(modelDownload.totalBytes ?? selectedRecommendation.totalBytes)}
+                  {modelDownload.fileIndex === undefined ? '' : ` (${modelDownload.fileIndex}/${modelDownload.fileCount})`}
+                </span>
+              </div>
+            )}
           </div>
           <div className="m4a-settings__field">
             <span className="m4a-settings__label">{t('modelPath')}</span>
             <div className="m4a-overlay__path-row">
               <input className="m4a-settings__input" value={modelPath} disabled={busy} spellCheck={false} placeholder="D:\\Models\\model.gguf" onChange={event => { setModelPath(event.target.value) }} />
+              {nativeFilePicker ? <button type="button" className="m4a-settings__button" disabled={busy} onClick={() => { void chooseModelFile('main') }}>{t('chooseFile')}</button> : null}
               <button type="button" className="m4a-settings__button" disabled={busy} onClick={() => { void chooseModelDirectory('main') }}>{t('chooseDirectory')}</button>
               <button type="button" className="m4a-settings__button" disabled={busy || modelPath.trim() === ''} onClick={() => { void discover(modelPath) }}>{t('scanDirectory')}</button>
             </div>
@@ -431,11 +595,16 @@ export function EngineStartupOverlay({ scope, t, pickDirectory }: Props): ReactN
               <input type="checkbox" checked={visionEnabled} disabled={busy} onChange={event => { setVisionEnabled(event.target.checked) }} />
               <span>{t('enableVision')}</span>
             </label>
-            <a className="m4a-settings__button m4a-settings__button--link" href={RECOMMENDED_VISION} target="_blank" rel="noreferrer">{t('downloadVision')}</a>
+            {recommendation('vision') === undefined ? null : (
+              <button type="button" className="m4a-settings__button" disabled={modelDirectory.trim() === '' || modelDownload.stage === 'downloading'} onClick={() => { void downloadRecommendation(recommendation('vision')!) }}>
+                {t('downloadVision')} ({formatBytes(recommendation('vision')!.totalBytes)})
+              </button>
+            )}
           </div>
           {visionEnabled ? (
             <div className="m4a-overlay__path-row">
               <input className="m4a-settings__input" value={visionPath} disabled={busy} spellCheck={false} placeholder="D:\\Models\\mmproj.gguf" onChange={event => { setVisionPath(event.target.value) }} />
+              {nativeFilePicker ? <button type="button" className="m4a-settings__button" disabled={busy} onClick={() => { void chooseModelFile('vision') }}>{t('chooseFile')}</button> : null}
               <button type="button" className="m4a-settings__button" disabled={busy} onClick={() => { void chooseModelDirectory('vision') }}>{t('chooseDirectory')}</button>
             </div>
           ) : null}
@@ -444,13 +613,18 @@ export function EngineStartupOverlay({ scope, t, pickDirectory }: Props): ReactN
               <input type="checkbox" checked={embeddingEnabled} disabled={busy} onChange={event => { setEmbeddingEnabled(event.target.checked) }} />
               <span>{t('enableEmbedding')}</span>
             </label>
-            <a className="m4a-settings__button m4a-settings__button--link" href={RECOMMENDED_EMBEDDING} target="_blank" rel="noreferrer">{t('downloadEmbedding')}</a>
+            {recommendation('embedding') === undefined ? null : (
+              <button type="button" className="m4a-settings__button" disabled={modelDirectory.trim() === '' || modelDownload.stage === 'downloading'} onClick={() => { void downloadRecommendation(recommendation('embedding')!) }}>
+                {t('downloadEmbedding')} ({formatBytes(recommendation('embedding')!.totalBytes)})
+              </button>
+            )}
           </div>
           {embeddingEnabled ? (
             <div className="m4a-overlay__setup-grid">
               <div className="m4a-settings__field m4a-settings__field--wide">
                 <div className="m4a-overlay__path-row">
                   <input className="m4a-settings__input" value={embeddingPath} disabled={busy} spellCheck={false} placeholder="D:\\Models\\embedding.gguf" onChange={event => { setEmbeddingPath(event.target.value) }} />
+                  {nativeFilePicker ? <button type="button" className="m4a-settings__button" disabled={busy} onClick={() => { void chooseModelFile('embedding') }}>{t('chooseFile')}</button> : null}
                   <button type="button" className="m4a-settings__button" disabled={busy} onClick={() => { void chooseModelDirectory('embedding') }}>{t('chooseDirectory')}</button>
                 </div>
               </div>
@@ -499,14 +673,28 @@ export function EngineStartupOverlay({ scope, t, pickDirectory }: Props): ReactN
               <input type="checkbox" checked={setupMtp} disabled={busy} onChange={event => { setSetupMtp(event.target.checked) }} />
               <span>{t('enableMtp')}</span>
             </label>
-            <a className="m4a-settings__button m4a-settings__button--link" href={RECOMMENDED_MTP} target="_blank" rel="noreferrer">{t('downloadMtp')}</a>
+            {recommendation('mtp') === undefined ? null : (
+              <button type="button" className="m4a-settings__button" disabled={modelDirectory.trim() === '' || modelDownload.stage === 'downloading'} onClick={() => { void downloadRecommendation(recommendation('mtp')!) }}>
+                {t('downloadMtp')} ({formatBytes(recommendation('mtp')!.totalBytes)})
+              </button>
+            )}
           </div>
           {setupMtp ? (
             <div className="m4a-overlay__path-row">
               <input className="m4a-settings__input" value={mtpPath} disabled={busy} spellCheck={false} placeholder="D:\\Models\\mtp.gguf" onChange={event => { setMtpPath(event.target.value) }} />
+              {nativeFilePicker ? <button type="button" className="m4a-settings__button" disabled={busy} onClick={() => { void chooseModelFile('mtp') }}>{t('chooseFile')}</button> : null}
               <button type="button" className="m4a-settings__button" disabled={busy} onClick={() => { void chooseModelDirectory('mtp') }}>{t('chooseDirectory')}</button>
             </div>
           ) : null}
+          {activeDownloadModel === undefined || activeDownloadModel.kind === 'main' || modelDownload.stage === 'idle' ? null : (
+            <div className="m4a-overlay__progress">
+              <progress max={100} value={modelDownload.percent} />
+              <span>
+                {activeDownloadModel.name}: {modelDownload.stage === 'complete' ? t('modelDownloadComplete') : t('modelDownloadProgress')}
+                {' '}{formatBytes(modelDownload.downloadedBytes)} / {formatBytes(modelDownload.totalBytes ?? activeDownloadModel.totalBytes)}
+              </span>
+            </div>
+          )}
           <label className="m4a-settings__check m4a-overlay__mtp">
             <input type="checkbox" checked={setupAutoStart} disabled={busy} onChange={event => { setSetupAutoStart(event.target.checked) }} />
             <span>{t('enableAutoStart')}</span>

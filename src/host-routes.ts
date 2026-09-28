@@ -3,8 +3,10 @@ import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 
 import type { EngineController, EngineRuntimeStatus, EngineStartResult } from './engine-controller.js'
 import type { EngineReleaseManager, EngineReleaseStatus, InstalledEngine } from './engine-release.js'
+import type { ModelDownloadManager } from './model-download.js'
 import type { DiscoveredModel } from './model-provider.js'
 import { discoverLocalModelFiles, type LocalModelFiles, type SetupModelPaths, validateSetupModelPaths } from './model-files.js'
+import { nativeFilePickerAvailable, pickGgufFile } from './native-file-picker.js'
 
 export const ENGINE_PATHS = {
   status: '/api/moe4all/status',
@@ -14,6 +16,9 @@ export const ENGINE_PATHS = {
   installLocal: '/api/moe4all/install-local',
   modelFiles: '/api/moe4all/model-files',
   validateModels: '/api/moe4all/validate-models',
+  pickModelFile: '/api/moe4all/pick-model-file',
+  modelCatalog: '/api/moe4all/model-catalog',
+  modelDownload: '/api/moe4all/model-download',
 } as const
 
 export interface EngineControlStatus extends EngineRuntimeStatus {
@@ -26,6 +31,7 @@ export interface EngineRuntimeAccess {
   refreshModels(): Promise<void>
   configuredExecutable(): string
   releases: EngineReleaseManager
+  downloads: ModelDownloadManager
 }
 
 function isIPv4Loopback(value: string): boolean {
@@ -224,6 +230,48 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
     }
   }
 
+  const handlePickModelFile = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    if (!method(request, response, 'POST') || !fenced(request, response)) return
+    if (!nativeFilePickerAvailable()) {
+      writeJson(response, 501, { ok: false, code: 'picker-unavailable', message: 'A native model file picker is not available on this platform.' })
+      return
+    }
+    try {
+      writeJson(response, 200, { ok: true, path: await pickGgufFile() })
+    } catch (error) {
+      writeJson(response, 500, { ok: false, code: 'picker-failed', message: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  const handleModelCatalog = (request: IncomingMessage, response: ServerResponse): void => {
+    if (!method(request, response, 'GET') || !fenced(request, response)) return
+    writeJson(response, 200, {
+      ok: true,
+      models: access.downloads.catalog(),
+      download: access.downloads.status(),
+      capabilities: { nativeFilePicker: nativeFilePickerAvailable() },
+    })
+  }
+
+  const handleModelDownload = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    if (!fenced(request, response)) return
+    if (request.method === 'GET') {
+      writeJson(response, 200, { ok: true, download: access.downloads.status() })
+      return
+    }
+    if (!method(request, response, 'POST')) return
+    const body = await readJson(request)
+    if (body === undefined || typeof body.modelId !== 'string' || typeof body.directory !== 'string') {
+      writeJson(response, 400, { ok: false, code: 'invalid-model-download', message: 'A recommended model and destination directory are required.' })
+      return
+    }
+    try {
+      writeJson(response, 202, { ok: true, download: access.downloads.start(body.modelId, body.directory) })
+    } catch (error) {
+      writeJson(response, 409, { ok: false, code: 'model-download-failed', message: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
   return [
     { kind: 'exact', path: ENGINE_PATHS.status, handler: handleStatus },
     { kind: 'exact', path: ENGINE_PATHS.start, handler: handleStart },
@@ -232,5 +280,8 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
     { kind: 'exact', path: ENGINE_PATHS.installLocal, handler: handleInstallLocal },
     { kind: 'exact', path: ENGINE_PATHS.modelFiles, handler: handleModelFiles },
     { kind: 'exact', path: ENGINE_PATHS.validateModels, handler: handleValidateModels },
+    { kind: 'exact', path: ENGINE_PATHS.pickModelFile, handler: handlePickModelFile },
+    { kind: 'exact', path: ENGINE_PATHS.modelCatalog, handler: handleModelCatalog },
+    { kind: 'exact', path: ENGINE_PATHS.modelDownload, handler: handleModelDownload },
   ]
 }

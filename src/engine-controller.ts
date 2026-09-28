@@ -61,9 +61,12 @@ export interface RunningProcess {
 export interface ResourceSnapshot {
   ramTotalBytes: number
   ramAvailableBytes: number
+  commitTotalBytes?: number
+  commitAvailableBytes?: number
   vramTotalBytes: number
   vramAvailableBytes: number
   vramLive: boolean
+  compatibilityFallback?: boolean
   device?: string
   deviceName?: string
 }
@@ -84,6 +87,9 @@ export interface EngineRuntimeStatus {
   reasons?: string[]
   resources?: ResourceSnapshot
   processes?: RunningProcess[]
+  startupStartedAt?: string
+  startupLines?: string[]
+  adjustedRamBudgetBytes?: number
 }
 
 export interface EngineStartResult {
@@ -354,6 +360,100 @@ function finiteBytes(value: unknown, field: string): number {
   return value
 }
 
+function unsupportedResourcesCommand(result: CapturedProcess): boolean {
+  return /(?:unrecognized|unknown) subcommand ['"]?resources/iu.test(`${result.stderr}\n${result.stdout}`)
+}
+
+function configuredDevice(arguments_: string[]): string | undefined {
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const argument = arguments_[index]!
+    const inline = /^--dev=(.+)$/u.exec(argument)?.[1]
+    if (inline !== undefined) return inline
+    if (argument === '--dev') return arguments_[index + 1]
+    if (argument === '--set') {
+      const value = arguments_[index + 1]
+      if (value?.startsWith('device.dev=')) return value.slice('device.dev='.length)
+      index += 1
+    }
+  }
+  return undefined
+}
+
+interface LegacyWindowsSnapshot {
+  ram_total_bytes: number
+  ram_available_bytes: number
+  commit_total_bytes: number
+  commit_available_bytes: number
+  vram_used_bytes?: number
+}
+
+async function probeWindowsSnapshot(timeout: number): Promise<LegacyWindowsSnapshot> {
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    '$os = Get-CimInstance Win32_OperatingSystem',
+    '$gpuUsage = $null',
+    "try { $gpuUsage = [Math]::Ceiling(((Get-Counter '\\GPU Adapter Memory(*)\\Dedicated Usage' -MaxSamples 1).CounterSamples | Measure-Object CookedValue -Sum).Sum) } catch {}",
+    '[pscustomobject]@{ ram_total_bytes = [uint64]$os.TotalVisibleMemorySize * 1024; ram_available_bytes = [uint64]$os.FreePhysicalMemory * 1024; commit_total_bytes = [uint64]$os.TotalVirtualMemorySize * 1024; commit_available_bytes = [uint64]$os.FreeVirtualMemory * 1024; vram_used_bytes = $gpuUsage } | ConvertTo-Json -Compress',
+  ].join('; ')
+  const windows = await captureProcess(
+    'powershell.exe',
+    ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
+    timeout,
+  )
+  if (windows.exitCode !== 0) {
+    throw new Error(`Windows resource probe failed (${windows.exitCode}): ${windows.stderr.trim()}`)
+  }
+  return JSON.parse(windows.stdout.trim()) as LegacyWindowsSnapshot
+}
+
+function parseLegacyDevice(output: string, requested?: string): { device: string, deviceName: string, totalBytes: number } {
+  const devices = output.split(/\r?\n/u).flatMap((line) => {
+    const match = /^\s*(Vulkan\d+):\s+(.+?)\s+\[.*?([\d.]+)\s+GiB device-local\](.*)$/u.exec(line)
+    if (match === null) return []
+    return [{
+      device: match[1]!,
+      deviceName: match[2]!.trim(),
+      totalBytes: Math.round(Number(match[3]) * 1024 ** 3),
+      selected: match[4]!.includes('<- default'),
+    }]
+  })
+  const selected = requested === undefined
+    ? devices.find(item => item.selected) ?? devices[0]
+    : devices.find(item => item.device.toLowerCase() === requested.toLowerCase())
+  if (selected === undefined || selected.totalBytes <= 0) {
+    throw new Error(`The legacy engine did not report the selected Vulkan device${requested === undefined ? '' : ` ${requested}`}.`)
+  }
+  return selected
+}
+
+async function probeLegacyWindowsResources(
+  executable: string,
+  config: EngineConfig,
+): Promise<ResourceSnapshot> {
+  const timeout = config.resourceProbeTimeoutMs ?? DEFAULT_CONFIG.resourceProbeTimeoutMs
+  const deviceResult = await captureProcess(executable, ['devices'], timeout, config.workingDirectory)
+  if (deviceResult.exitCode !== 0) {
+    throw new Error(`infr devices probe failed (${deviceResult.exitCode}): ${deviceResult.stderr.trim()}`)
+  }
+  const selected = parseLegacyDevice(deviceResult.stdout, configuredDevice(config.arguments ?? []))
+  const raw = await probeWindowsSnapshot(timeout)
+  const used = typeof raw.vram_used_bytes === 'number' && Number.isFinite(raw.vram_used_bytes)
+    ? Math.max(0, raw.vram_used_bytes)
+    : undefined
+  return {
+    ramTotalBytes: finiteBytes(raw.ram_total_bytes, 'ram_total_bytes'),
+    ramAvailableBytes: finiteBytes(raw.ram_available_bytes, 'ram_available_bytes'),
+    commitTotalBytes: finiteBytes(raw.commit_total_bytes, 'commit_total_bytes'),
+    commitAvailableBytes: finiteBytes(raw.commit_available_bytes, 'commit_available_bytes'),
+    vramTotalBytes: selected.totalBytes,
+    vramAvailableBytes: used === undefined ? selected.totalBytes : Math.max(0, selected.totalBytes - used),
+    vramLive: used !== undefined,
+    compatibilityFallback: true,
+    device: selected.device,
+    deviceName: selected.deviceName,
+  }
+}
+
 export async function probeEngineResources(
   executable: string,
   config: EngineConfig,
@@ -365,14 +465,27 @@ export async function probeEngineResources(
     config.workingDirectory,
   )
   if (result.exitCode !== 0) {
+    if (process.platform === 'win32' && unsupportedResourcesCommand(result)) {
+      return probeLegacyWindowsResources(executable, config)
+    }
     throw new Error(`infr resource probe failed (${result.exitCode}): ${result.stderr.trim()}`)
   }
   const raw = JSON.parse(result.stdout.trim()) as Record<string, unknown>
   const device = typeof raw.device === 'string' ? raw.device : undefined
   const deviceName = typeof raw.device_name === 'string' ? raw.device_name : undefined
+  let windows: LegacyWindowsSnapshot | undefined
+  if (process.platform === 'win32') {
+    try {
+      windows = await probeWindowsSnapshot(config.resourceProbeTimeoutMs ?? DEFAULT_CONFIG.resourceProbeTimeoutMs)
+    } catch {}
+  }
   return {
-    ramTotalBytes: typeof raw.ram_total_bytes === 'number' ? raw.ram_total_bytes : totalmem(),
-    ramAvailableBytes: typeof raw.ram_available_bytes === 'number' ? raw.ram_available_bytes : freemem(),
+    ramTotalBytes: typeof raw.ram_total_bytes === 'number' ? raw.ram_total_bytes : windows?.ram_total_bytes ?? totalmem(),
+    ramAvailableBytes: typeof raw.ram_available_bytes === 'number' ? raw.ram_available_bytes : windows?.ram_available_bytes ?? freemem(),
+    ...(windows === undefined ? {} : {
+      commitTotalBytes: windows.commit_total_bytes,
+      commitAvailableBytes: windows.commit_available_bytes,
+    }),
     vramTotalBytes: finiteBytes(raw.vram_total_bytes, 'vram_total_bytes'),
     vramAvailableBytes: finiteBytes(raw.vram_available_bytes, 'vram_available_bytes'),
     vramLive: raw.vram_live === true,
@@ -383,6 +496,63 @@ export async function probeEngineResources(
 
 function percent(available: number, total: number): string {
   return `${(available / total * 100).toFixed(1)}%`
+}
+
+function formatGiB(bytes: number): string {
+  return `${(bytes / 1024 ** 3).toFixed(2)} GiB`
+}
+
+interface RamBudgetAdjustment {
+  budgetBytes: number
+  requestedBytes: number
+  arguments: string[]
+}
+
+const GIB = 1024 ** 3
+
+function setValue(arguments_: string[], path: string): string | undefined {
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const argument = arguments_[index]!
+    if (argument === '--set') {
+      const value = arguments_[index + 1]
+      if (value?.startsWith(`${path}=`)) return value.slice(path.length + 1)
+      index += 1
+      continue
+    }
+    const inline = /^--set=(.+)$/u.exec(argument)?.[1]
+    if (inline?.startsWith(`${path}=`)) return inline.slice(path.length + 1)
+  }
+  return undefined
+}
+
+function automaticRamBudgetAdjustment(
+  arguments_: string[],
+  resources: ResourceSnapshot | undefined,
+): RamBudgetAdjustment | undefined {
+  if (resources?.commitAvailableBytes === undefined) return undefined
+  if (setValue(arguments_, 'device.ram_budget') !== undefined) return undefined
+  const profile = setValue(arguments_, 'device.auto_profile')
+  if (profile !== 'aggressive' && profile !== 'conservative') return undefined
+
+  const requestedBytes = profile === 'aggressive'
+    ? Math.max(0, resources.ramTotalBytes - 14 * GIB)
+    : Math.max(0, resources.ramAvailableBytes - 3 * GIB)
+  const expectedVramCommit = profile === 'aggressive'
+    ? Math.max(0, resources.vramTotalBytes - 2 * GIB)
+    : Math.max(0, resources.vramAvailableBytes - GIB)
+  const commitCeiling = Math.max(0, resources.commitAvailableBytes - expectedVramCommit - 2 * GIB)
+  const physicalCeiling = Math.max(0, resources.ramAvailableBytes - 3 * GIB)
+  const safeBytes = Math.floor(Math.min(requestedBytes, commitCeiling, physicalCeiling) / (1024 ** 2)) * 1024 ** 2
+  if (safeBytes >= requestedBytes) return undefined
+  return {
+    budgetBytes: safeBytes,
+    requestedBytes,
+    arguments: [...arguments_, '--set', `device.ram_budget=${safeBytes}`],
+  }
+}
+
+function cleanOutputLine(line: string): string {
+  return line.replaceAll(/\u001B\[[0-?]*[ -/]*[@-~]/gu, '').replaceAll('\r', '').trimEnd()
 }
 
 const DEFAULT_DEPENDENCIES: EngineControllerDependencies = {
@@ -427,6 +597,9 @@ export class EngineController {
   private startPromise: Promise<EngineStartResult> | undefined
   private stopping = false
   private currentStatus: EngineRuntimeStatus
+  private startupStartedAt: string | undefined
+  private startupLines: string[] = []
+  private adjustedRamBudgetBytes: number | undefined
 
   constructor(
     config: EngineConfig,
@@ -464,7 +637,7 @@ export class EngineController {
       })
     }
 
-    if (this.currentStatus.phase === 'starting' || this.currentStatus.phase === 'resource-warning') {
+    if (this.currentStatus.phase === 'starting' || this.currentStatus.phase === 'resource-warning' || this.currentStatus.phase === 'error') {
       return this.statusSnapshot()
     }
     if (!isLoopback(this.endpoint.hostname)) {
@@ -519,6 +692,7 @@ export class EngineController {
           phase: 'error',
           ready: false,
           canStart: true,
+          ...this.startupDetails(),
           message,
         }),
       }
@@ -551,6 +725,24 @@ export class EngineController {
     return this.statusSnapshot()
   }
 
+  private startupDetails(): Pick<EngineRuntimeStatus, 'startupStartedAt' | 'startupLines' | 'adjustedRamBudgetBytes'> {
+    return {
+      ...(this.startupStartedAt === undefined ? {} : { startupStartedAt: this.startupStartedAt }),
+      ...(this.startupLines.length === 0 ? {} : { startupLines: [...this.startupLines] }),
+      ...(this.adjustedRamBudgetBytes === undefined ? {} : { adjustedRamBudgetBytes: this.adjustedRamBudgetBytes }),
+    }
+  }
+
+  private appendStartupLine(line: string): void {
+    const cleaned = cleanOutputLine(line)
+    if (cleaned === '') return
+    this.startupLines.push(cleaned)
+    if (this.startupLines.length > 120) this.startupLines.splice(0, this.startupLines.length - 120)
+    if (this.currentStatus.phase === 'starting') {
+      this.currentStatus = { ...this.currentStatus, ...this.startupDetails() }
+    }
+  }
+
   private processNames(executable: string): string[] {
     return [...new Set([...this.config.processNames, basename(executable)])]
   }
@@ -559,7 +751,7 @@ export class EngineController {
     return this.dependencies.detectProcesses(this.processNames(executable))
   }
 
-  private async resourceWarning(executable: string): Promise<StartupPrompt | undefined> {
+  private async resourceAssessment(executable: string): Promise<StartupPrompt> {
     let resources: ResourceSnapshot | undefined
     const reasons: string[] = []
     try {
@@ -575,7 +767,6 @@ export class EngineController {
     } catch (error) {
       reasons.push(`Resource usage could not be measured: ${error instanceof Error ? error.message : String(error)}`)
     }
-    if (reasons.length === 0) return undefined
     return { reasons, ...(resources === undefined ? {} : { resources }) }
   }
 
@@ -635,9 +826,9 @@ export class EngineController {
       }
     }
 
-    const warning = await this.resourceWarning(executable)
-    if (warning !== undefined && !force) {
-      this.logger.warn(`MoE4All startup requires confirmation: ${warning.reasons.join(' ')}`)
+    const assessment = await this.resourceAssessment(executable)
+    if (assessment.reasons.length > 0 && !force) {
+      this.logger.warn(`MoE4All startup requires confirmation: ${assessment.reasons.join(' ')}`)
       return {
         ok: false,
         status: this.setStatus({
@@ -645,9 +836,9 @@ export class EngineController {
           ready: false,
           canStart: true,
           executable,
-          reasons: warning.reasons,
-          ...(warning.resources === undefined ? {} : { resources: warning.resources }),
-          message: 'Available RAM or VRAM is below the configured startup threshold.',
+          reasons: assessment.reasons,
+          ...(assessment.resources === undefined ? {} : { resources: assessment.resources }),
+          message: 'MoE4All needs confirmation before starting with the current resource headroom.',
         }),
       }
     }
@@ -668,20 +859,28 @@ export class EngineController {
       }
     }
 
+    const adjustment = automaticRamBudgetAdjustment(this.config.arguments, assessment.resources)
+    this.startupStartedAt = new Date().toISOString()
+    this.startupLines = []
+    this.adjustedRamBudgetBytes = adjustment?.budgetBytes
+    if (adjustment !== undefined) {
+      this.appendStartupLine(`Compatibility guard: RAM budget reduced from ${formatGiB(adjustment.requestedBytes)} to ${formatGiB(adjustment.budgetBytes)} for the current Windows commit headroom.`)
+    }
     this.setStatus({
       phase: 'starting',
       ready: false,
       canStart: false,
       executable,
-      ...(warning?.resources === undefined ? {} : { resources: warning.resources }),
+      ...(assessment.resources === undefined ? {} : { resources: assessment.resources }),
+      ...this.startupDetails(),
       message: 'MoE4All is starting.',
     })
-    const child = this.launch(executable)
+    const child = this.launch(executable, adjustment?.arguments ?? this.config.arguments)
     const deadline = Date.now() + this.config.startupTimeoutMs
     while (Date.now() < deadline) {
       if (this.abort.signal.aborted) return { ok: false, status: this.statusSnapshot() }
       if (child.exitCode !== null || child.signalCode !== null) {
-        throw new Error(`MoE4All engine exited before becoming ready (code ${String(child.exitCode)})`)
+        throw new Error(`MoE4All engine exited before becoming ready (code ${String(child.exitCode)}).`)
       }
       if (await probeHealth(
         this.endpoint,
@@ -695,6 +894,7 @@ export class EngineController {
           ready: true,
           canStart: false,
           executable,
+          ...this.startupDetails(),
           message: `MoE4All is ready at ${this.endpoint.origin}.`,
         })
         return { ok: true, status: ready }
@@ -704,11 +904,11 @@ export class EngineController {
     throw new Error(`MoE4All engine did not become healthy within ${this.config.startupTimeoutMs} ms`)
   }
 
-  private launch(executable: string): ChildProcess {
+  private launch(executable: string, arguments_: string[]): ChildProcess {
     const persistent = !this.config.stopOnUnload
-    const captureOutput = this.config.logOutput && !persistent
+    const captureOutput = !persistent
     this.logger.info(`Starting MoE4All engine: ${executable}`)
-    this.child = spawn(executable, this.config.arguments, {
+    this.child = spawn(executable, arguments_, {
       cwd: this.config.workingDirectory || undefined,
       env: process.env,
       shell: false,
@@ -728,14 +928,21 @@ export class EngineController {
           ready: false,
           canStart: true,
           executable,
+          ...this.startupDetails(),
           message: `MoE4All exited (code=${String(code)}, signal=${String(signal)}).`,
         })
       }
     })
     if (captureOutput) {
       this.readers = [
-        pipeLines(this.child.stdout, (line) => this.logger.info(`[MoE4All] ${line}`)),
-        pipeLines(this.child.stderr, (line) => this.logger.warn(`[MoE4All] ${line}`)),
+        pipeLines(this.child.stdout, (line) => {
+          this.appendStartupLine(line)
+          if (this.config.logOutput) this.logger.info(`[MoE4All] ${line}`)
+        }),
+        pipeLines(this.child.stderr, (line) => {
+          this.appendStartupLine(line)
+          if (this.config.logOutput) this.logger.warn(`[MoE4All] ${line}`)
+        }),
       ].filter((reader): reader is ReadLineInterface => reader !== undefined)
     }
     if (persistent) this.child.unref()

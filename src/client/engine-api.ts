@@ -1,6 +1,7 @@
 import type { EngineControlStatus } from '../host-routes.js'
 import type { EngineReleaseStatus, InstalledEngine } from '../engine-release.js'
 import type { LocalModelFiles, SetupModelPaths } from '../model-files.js'
+import type { ModelDownloadProgress, RecommendedModel } from '../model-download.js'
 
 interface StartResponse {
   ok: boolean
@@ -9,6 +10,13 @@ interface StartResponse {
 
 interface ReleaseResponse extends EngineReleaseStatus {
   ok: boolean
+}
+
+export interface ModelCatalogResponse {
+  ok: boolean
+  models: RecommendedModel[]
+  download: ModelDownloadProgress
+  capabilities: { nativeFilePicker: boolean }
 }
 
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
@@ -71,4 +79,29 @@ export async function validateModelPaths(paths: SetupModelPaths): Promise<SetupM
     body: JSON.stringify({ paths }),
   })
   return result.paths
+}
+
+export async function pickModelFile(): Promise<string | undefined> {
+  const result = await json<{ ok: boolean, path?: string }>('/api/moe4all/pick-model-file', {
+    method: 'POST',
+    body: '{}',
+  })
+  return result.path
+}
+
+export function fetchModelCatalog(): Promise<ModelCatalogResponse> {
+  return json('/api/moe4all/model-catalog')
+}
+
+export async function fetchModelDownload(): Promise<ModelDownloadProgress> {
+  const result = await json<{ ok: boolean, download: ModelDownloadProgress }>('/api/moe4all/model-download')
+  return result.download
+}
+
+export async function startModelDownload(modelId: string, directory: string): Promise<ModelDownloadProgress> {
+  const result = await json<{ ok: boolean, download: ModelDownloadProgress }>('/api/moe4all/model-download', {
+    method: 'POST',
+    body: JSON.stringify({ modelId, directory }),
+  })
+  return result.download
 }

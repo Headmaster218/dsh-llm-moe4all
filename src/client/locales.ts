@@ -28,9 +28,33 @@ export type Moe4AllLocaleKey =
   | 'sessionCacheTtl' | 'noVisionFound' | 'noEmbeddingFound' | 'visionPathRequired'
   | 'embeddingPathRequired'
   | 'downloadMtp' | 'noMtpFound' | 'mtpPathRequired'
+  | 'modelDirectory' | 'chooseFile' | 'recommendedModel' | 'downloadSize' | 'fileCount'
+  | 'supportsVision' | 'supportsMtp' | 'downloadToDirectory' | 'downloadRecommended'
+  | 'modelDownloadProgress' | 'modelDownloadComplete' | 'modelDownloadRetry' | 'sourcePage'
+  | 'startupProgressTitle' | 'startupProgressBody' | 'startupOutput' | 'startupFailedTitle'
+  | 'retryStart' | 'ramBudgetAdjusted'
 
 export const en: Record<Moe4AllLocaleKey, string> = {
   nav: 'MoE4All',
+  modelDirectory: 'Model download directory',
+  chooseFile: 'Choose file',
+  recommendedModel: 'Recommended model',
+  downloadSize: 'Download size',
+  fileCount: 'Files',
+  supportsVision: 'Vision',
+  supportsMtp: 'MTP',
+  downloadToDirectory: 'Downloads are stored in the selected model directory.',
+  downloadRecommended: 'Download selected model',
+  modelDownloadProgress: 'Downloading model',
+  modelDownloadComplete: 'Model download complete',
+  modelDownloadRetry: 'Resume download',
+  sourcePage: 'Open source page',
+  startupProgressTitle: 'Starting MoE4All',
+  startupProgressBody: 'Loading the model and allocating runtime resources. This can take several minutes.',
+  startupOutput: 'Engine output',
+  startupFailedTitle: 'MoE4All could not start',
+  retryStart: 'Retry start',
+  ramBudgetAdjusted: 'The RAM budget was reduced to fit the current Windows commit headroom.',
   title: 'MoE4All engine',
   loading: 'Loading configuration...',
   unavailable: 'Engine settings are unavailable on this connection.',
@@ -160,6 +184,25 @@ export const en: Record<Moe4AllLocaleKey, string> = {
 
 export const zh: Record<Moe4AllLocaleKey, string> = {
   nav: 'MoE4All',
+  modelDirectory: '模型下载目录',
+  chooseFile: '选择文件',
+  recommendedModel: '推荐模型',
+  downloadSize: '下载大小',
+  fileCount: '文件数',
+  supportsVision: '视觉',
+  supportsMtp: 'MTP',
+  downloadToDirectory: '模型会下载到所选模型目录中。',
+  downloadRecommended: '下载所选模型',
+  modelDownloadProgress: '正在下载模型',
+  modelDownloadComplete: '模型下载完成',
+  modelDownloadRetry: '继续下载',
+  sourcePage: '打开来源页面',
+  startupProgressTitle: '正在启动 MoE4All',
+  startupProgressBody: '正在加载模型并分配运行资源，可能需要几分钟。',
+  startupOutput: '引擎输出',
+  startupFailedTitle: 'MoE4All 启动失败',
+  retryStart: '重试启动',
+  ramBudgetAdjusted: '已根据当前 Windows 提交余量下调 RAM 预算。',
   title: 'MoE4All 引擎',
   loading: '正在加载配置...',
   unavailable: '当前连接无法访问引擎设置。',

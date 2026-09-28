@@ -106,6 +106,65 @@ test('auto mode starts and stops a configured engine only when the machine is id
 
   assert.equal(await controller.ensureReady(), true)
   assert.equal(await probeHealth(new URL(`http://127.0.0.1:${port}/v1`), 500), true)
+  assert.equal(controller.statusSnapshot().startupLines?.includes('fake engine loading'), true)
+  await controller.dispose()
+})
+
+test('startup failures retain the engine output for the UI', async () => {
+  const port = await unusedPort()
+  const controller = new EngineController({
+    mode: 'prompt',
+    endpoint: `http://127.0.0.1:${port}/v1`,
+    executable: process.execPath,
+    arguments: [join(import.meta.dirname, 'fake-engine-fail.mjs')],
+    startupTimeoutMs: 2_000,
+    healthTimeoutMs: 100,
+    pollIntervalMs: 25,
+    stopOnUnload: true,
+    logOutput: false,
+  }, quietLogger, dependencies())
+
+  const result = await controller.requestStart()
+  assert.equal(result.ok, false)
+  assert.equal(result.status.phase, 'error')
+  assert.match(result.status.startupLines?.join('\n') ?? '', /simulated model allocation failure/)
+  assert.equal((await controller.refreshStatus()).phase, 'error')
+  await controller.dispose()
+})
+
+test('automatic startup caps RAM to Windows commit headroom without a false busy warning', async () => {
+  const port = await unusedPort()
+  const controller = new EngineController({
+    mode: 'auto',
+    endpoint: `http://127.0.0.1:${port}/v1`,
+    executable: process.execPath,
+    arguments: [
+      join(import.meta.dirname, 'fake-engine.mjs'),
+      String(port),
+      '--set',
+      'device.auto_profile=aggressive',
+    ],
+    startupTimeoutMs: 5_000,
+    healthTimeoutMs: 250,
+    pollIntervalMs: 25,
+    shutdownTimeoutMs: 2_000,
+    stopOnUnload: true,
+    logOutput: false,
+  }, quietLogger, dependencies({
+    probeResources: async () => ({
+      ...idleResources,
+      ramAvailableBytes: 50 * 1024 ** 3,
+      commitTotalBytes: 68 * 1024 ** 3,
+      commitAvailableBytes: 40 * 1024 ** 3,
+      vramAvailableBytes: 23 * 1024 ** 3,
+    }),
+  }))
+
+  assert.equal(await controller.ensureReady(), true)
+  const status = controller.statusSnapshot()
+  assert.equal(status.phase, 'ready')
+  assert.equal(status.adjustedRamBudgetBytes, 16 * 1024 ** 3)
+  assert.match(status.startupLines?.join('\n') ?? '', /Compatibility guard/)
   await controller.dispose()
 })
 

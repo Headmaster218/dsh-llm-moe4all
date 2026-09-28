@@ -38,9 +38,12 @@ export interface RunningProcess {
 export interface ResourceSnapshot {
     ramTotalBytes: number;
     ramAvailableBytes: number;
+    commitTotalBytes?: number;
+    commitAvailableBytes?: number;
     vramTotalBytes: number;
     vramAvailableBytes: number;
     vramLive: boolean;
+    compatibilityFallback?: boolean;
     device?: string;
     deviceName?: string;
 }
@@ -59,6 +62,9 @@ export interface EngineRuntimeStatus {
     reasons?: string[];
     resources?: ResourceSnapshot;
     processes?: RunningProcess[];
+    startupStartedAt?: string;
+    startupLines?: string[];
+    adjustedRamBudgetBytes?: number;
 }
 export interface EngineStartResult {
     ok: boolean;
@@ -115,6 +121,9 @@ export declare class EngineController {
     private startPromise;
     private stopping;
     private currentStatus;
+    private startupStartedAt;
+    private startupLines;
+    private adjustedRamBudgetBytes;
     constructor(config: EngineConfig, logger?: EngineLogger, dependencies?: Partial<EngineControllerDependencies>);
     statusSnapshot(): EngineRuntimeStatus;
     refreshStatus(): Promise<EngineRuntimeStatus>;
@@ -122,9 +131,11 @@ export declare class EngineController {
     requestStart(force?: boolean): Promise<EngineStartResult>;
     private initialize;
     private setStatus;
+    private startupDetails;
+    private appendStartupLine;
     private processNames;
     private findExistingEngine;
-    private resourceWarning;
+    private resourceAssessment;
     private start;
     private launch;
     dispose(): Promise<void>;

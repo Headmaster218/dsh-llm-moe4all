@@ -55,7 +55,7 @@ interface PiAiConfig {
 }
 
 const DEFAULTS = {
-  contextWindow: 262_144,
+  contextWindow: 163_840,
   maxTokens: 102_400,
   vision: true,
   excludeModelNameContains: ['embed', 'embedding'],

@@ -6,13 +6,16 @@ import z from '@deepseek-ai/schemastery'
 import { EngineController, type EngineConfig } from './engine-controller.js'
 import { EngineReleaseManager } from './engine-release.js'
 import { makeEngineRoutes } from './host-routes.js'
+import { ModelDownloadManager } from './model-download.js'
 import { ModelProviderBridge, type LoaderLike, type ModelProviderConfig } from './model-provider.js'
 
 export const name = 'moe4all-engine'
 export const inject = ['loader']
 export const SETTINGS_NAMESPACE = settingsNamespace('moe4all-engine')
 
-export interface Config extends EngineConfig, ModelProviderConfig {}
+export interface Config extends EngineConfig, ModelProviderConfig {
+  modelDirectory?: string
+}
 
 export const Config = z.object({
   mode: z.union(['connect', 'prompt', 'auto', 'managed']).default('prompt'),
@@ -37,8 +40,9 @@ export const Config = z.object({
   shutdownTimeoutMs: z.number().step(1).min(100).default(5_000),
   stopOnUnload: z.boolean().default(true),
   logOutput: z.boolean().default(true),
-  contextWindow: z.number().step(1).min(1).default(262_144),
+  contextWindow: z.number().step(1).min(1).default(163_840),
   maxTokens: z.number().step(1).min(1).default(102_400),
+  modelDirectory: z.string().role('path').default(''),
   vision: z.boolean().default(true),
   excludeModelNameContains: z.array(z.string()).default(['embed', 'embedding']),
   modelRefreshIntervalMs: z.number().step(1).min(1_000).default(15_000),
@@ -79,6 +83,7 @@ function configSignature(config: Config): string {
 export function apply(ctx: Context, config: Config): () => Promise<void> {
   const loader = (ctx as Context & { loader: LoaderLike }).loader
   const releases = new EngineReleaseManager()
+  const downloads = new ModelDownloadManager()
   let source = (): Config => config
   let active: ActiveRuntime | undefined = startRuntime(ctx, loader, config)
   let activeSignature = configSignature(config)
@@ -122,6 +127,7 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
       refreshModels: async () => { await active?.provider.refreshNow() },
       configuredExecutable: () => source().executable ?? '',
       releases,
+      downloads,
     })
     routeCtx.effect(() => {
       const disposers = routes.map((route) => webServer.register(route))
@@ -167,5 +173,7 @@ export type {
 export { EngineReleaseManager, releaseFromTag, selectRelease } from './engine-release.js'
 export type { EngineInstallProgress, EngineInstallStage, EngineReleaseStatus, InstalledEngine, SelectedRelease } from './engine-release.js'
 export { ENGINE_PATHS, isLoopbackRequest, makeEngineRoutes } from './host-routes.js'
+export { ModelDownloadManager, RECOMMENDED_MODELS } from './model-download.js'
+export type { ModelDownloadProgress, RecommendedModel, RecommendedModelKind } from './model-download.js'
 export { discoverModels, ModelProviderBridge, providerProfile } from './model-provider.js'
 export type { DiscoveredModel, LoaderLike, ModelProviderConfig } from './model-provider.js'

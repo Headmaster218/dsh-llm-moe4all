@@ -6,6 +6,7 @@ export declare const name = "moe4all-engine";
 export declare const inject: string[];
 export declare const SETTINGS_NAMESPACE: import("@deepseek-ai/dsh-settings").SettingsNamespace;
 export interface Config extends EngineConfig, ModelProviderConfig {
+    modelDirectory?: string;
 }
 export declare const Config: z<Schemastery.ObjectS<{
     mode: z<"connect" | "prompt" | "auto" | "managed", "connect" | "prompt" | "auto" | "managed">;
@@ -32,6 +33,7 @@ export declare const Config: z<Schemastery.ObjectS<{
     logOutput: z<boolean, boolean>;
     contextWindow: z<number, number>;
     maxTokens: z<number, number>;
+    modelDirectory: z<string, string>;
     vision: z<boolean, boolean>;
     excludeModelNameContains: z<string[], string[]>;
     modelRefreshIntervalMs: z<number, number>;
@@ -61,6 +63,7 @@ export declare const Config: z<Schemastery.ObjectS<{
     logOutput: z<boolean, boolean>;
     contextWindow: z<number, number>;
     maxTokens: z<number, number>;
+    modelDirectory: z<string, string>;
     vision: z<boolean, boolean>;
     excludeModelNameContains: z<string[], string[]>;
     modelRefreshIntervalMs: z<number, number>;
@@ -95,6 +98,7 @@ declare const plugin: {
         logOutput: z<boolean, boolean>;
         contextWindow: z<number, number>;
         maxTokens: z<number, number>;
+        modelDirectory: z<string, string>;
         vision: z<boolean, boolean>;
         excludeModelNameContains: z<string[], string[]>;
         modelRefreshIntervalMs: z<number, number>;
@@ -124,6 +128,7 @@ declare const plugin: {
         logOutput: z<boolean, boolean>;
         contextWindow: z<number, number>;
         maxTokens: z<number, number>;
+        modelDirectory: z<string, string>;
         vision: z<boolean, boolean>;
         excludeModelNameContains: z<string[], string[]>;
         modelRefreshIntervalMs: z<number, number>;
@@ -137,6 +142,8 @@ export type { EffectiveLaunchMode, EngineConfig, EngineLogger, EnginePhase, Engi
 export { EngineReleaseManager, releaseFromTag, selectRelease } from './engine-release.js';
 export type { EngineInstallProgress, EngineInstallStage, EngineReleaseStatus, InstalledEngine, SelectedRelease } from './engine-release.js';
 export { ENGINE_PATHS, isLoopbackRequest, makeEngineRoutes } from './host-routes.js';
+export { ModelDownloadManager, RECOMMENDED_MODELS } from './model-download.js';
+export type { ModelDownloadProgress, RecommendedModel, RecommendedModelKind } from './model-download.js';
 export { discoverModels, ModelProviderBridge, providerProfile } from './model-provider.js';
 export type { DiscoveredModel, LoaderLike, ModelProviderConfig } from './model-provider.js';
 //# sourceMappingURL=index.d.ts.map

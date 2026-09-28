@@ -358,6 +358,9 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
       <section className="m4a-settings__group">
         <h3 className="m4a-settings__group-title">{t('model')}</h3>
         <div className="m4a-settings__grid">
+          <Field label={t('modelDirectory')} wide>
+            <input className="m4a-settings__input" value={draft.modelDirectory} disabled={disabled} spellCheck={false} onChange={event => { setField('modelDirectory', event.target.value) }} />
+          </Field>
           <Field label={t('contextWindow')} hint={t('tokenUnitHint')}>
             <TokenInput value={draft.contextWindow} disabled={disabled} onChange={value => { setField('contextWindow', value) }} />
           </Field>
