@@ -52,7 +52,7 @@ export function apply(ctx: ClientContext): void {
 
   ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
     name: 'settings.onboarding',
-    id: 'moe4all-setup',
+    id: 'moe4all-setup-v2',
     order: -50,
   }, owner => createElement(Moe4AllOnboarding, { ...owner, scope })))
 

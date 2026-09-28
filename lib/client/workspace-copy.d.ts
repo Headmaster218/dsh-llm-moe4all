@@ -23,6 +23,10 @@ declare const copy: {
     readonly stepEngine: readonly ["Install an engine", "准备引擎"];
     readonly stepModel: readonly ["Choose a model", "选择模型"];
     readonly stepStart: readonly ["Start chatting", "启动使用"];
+    readonly firstInstallRunning: readonly ["Preparing the MoE4All engine", "正在准备 MoE4All 引擎"];
+    readonly firstInstallRunningBody: readonly ["The official release is downloading and will be configured automatically. You can leave this page open.", "正在下载官方发行版，完成后会自动配置。保持此页面打开即可。"];
+    readonly firstInstallAttention: readonly ["Engine setup needs attention", "引擎安装需要处理"];
+    readonly firstInstallAttentionBody: readonly ["Retry the automatic download, or import a ZIP, folder, or infr.exe you already downloaded.", "可以重试自动下载，或导入已经下载的 ZIP、目录或 infr.exe。"];
     readonly modelEmpty: readonly ["No model selected", "尚未选择模型"];
     readonly selectedModelTitle: readonly ["Selected model", "当前模型"];
     readonly browseLibrary: readonly ["Choose a model", "选择模型"];

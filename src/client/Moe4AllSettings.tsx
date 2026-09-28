@@ -72,6 +72,8 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
   const [advanced, setAdvanced] = useState(false)
   const [copied, setCopied] = useState(false)
   const [clock, setClock] = useState(Date.now())
+  const routedFirstUse = useRef(false)
+  const hadModel = useRef(false)
   useEffect(() => {
     const dialog = root.current?.closest('[role="dialog"]')
     let options = root.current?.parentElement
@@ -104,6 +106,19 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
     const timer = setInterval(() => setClock(Date.now()), 1000)
     return () => clearInterval(timer)
   }, [])
+  useEffect(() => {
+    const editor = w.editor
+    if (!editor || editor.config.mode === 'connect') return
+    const engineSelected = !!editor.config.executable
+    const modelSelected = !!editor.setup.model
+    if (engineSelected && !modelSelected && !routedFirstUse.current) {
+      routedFirstUse.current = true
+      setTab('models')
+    } else if (modelSelected && !hadModel.current && w.download.stage === 'complete') {
+      setTab('run')
+    }
+    hadModel.current = modelSelected
+  }, [w.editor?.config.executable, w.editor?.config.mode, w.editor?.setup.model, w.download.stage])
   if (!w.editor)
     return (
       <div className="m4a-workspace" ref={root}>
@@ -124,7 +139,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
     samePath(item.executable, e.config.executable ?? ''),
   )
   const currentModel = w.library.models.find((item) => samePath(item.path, e.setup.model))
-  const showSteps = local && (!engineSelected || !modelSelected)
+  const firstEngineSetup = local && !engineSelected
   const needsRestart = owned && (w.dirty || w.status?.pendingChanges || (!ready && !starting))
   const endpoint = endpointFromConfig(e.config)
   const output = (w.status?.startupLines ?? []).join('\n')
@@ -447,22 +462,6 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
           <span>{t('pendingRestart')}</span>
         </div>
       )}
-      {showSteps && tab === 'run' && (
-        <ol className="m4a-setup-steps" aria-label={t('setupTitle')}>
-          {[
-            { done: engineSelected, title: 'stepEngine' as const, next: 'engines' as Tab },
-            { done: modelSelected, title: 'stepModel' as const, next: 'models' as Tab },
-            { done: ready, title: 'stepStart' as const, next: 'run' as Tab },
-          ].map((step, index) => (
-            <li key={step.title} className={step.done ? 'is-done' : ''}>
-              <button type="button" onClick={() => setTab(step.next)}>
-                <span>{step.done ? <Check size={13} /> : index + 1}</span>
-                {t(step.title)}
-              </button>
-            </li>
-          ))}
-        </ol>
-      )}
       {downloadTasks && (
         <div className="m4a-transfer-list">
           {engineTask && !['idle', 'complete'].includes(engineTask.stage) && (
@@ -475,9 +474,24 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
                 isInstalling(w.release) ? (
                   <IconButton icon={Square} label={t('stopTransfer')} onClick={() => void w.stopInstall()} />
                 ) : (
-                  <Button icon={RefreshCw} onClick={() => void w.install()}>
-                    {t('retryDownload')}
-                  </Button>
+                  <>
+                    <Button icon={RefreshCw} onClick={() => void w.install()}>
+                      {t('retryDownload')}
+                    </Button>
+                    <a
+                      className="m4a-icon-btn"
+                      href={w.release?.latest?.pageUrl ?? 'https://github.com/Headmaster218/MoE4All/releases/latest'}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={t('openReleasePage')}
+                      aria-label={t('openReleasePage')}
+                    >
+                      <ArrowDownToLine size={15} />
+                    </a>
+                    <Button kind="ghost" icon={FolderOpen} onClick={() => setTab('engines')}>
+                      {t('useLocalDownload')}
+                    </Button>
+                  </>
                 )
               }
             />
@@ -486,18 +500,32 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
             <Transfer
               label={currentDownload?.name ?? t('downloadRunning')}
               percent={modelTask.percent}
-              detail={`${t(modelTask.stage === 'downloading' ? 'downloadRunning' : modelTask.stage === 'error' ? 'failedDownload' : 'pausedStatus')} · ${formatBytes(modelTask.downloadedBytes)}${modelTask.totalBytes ? ` / ${formatBytes(modelTask.totalBytes)}` : ''}`}
+              detail={`${t(modelTask.stage === 'downloading' ? 'downloadRunning' : modelTask.stage === 'error' ? 'failedDownload' : 'pausedStatus')} · ${modelTask.fileName ? `${modelTask.fileName} · ` : ''}${modelTask.fileIndex && modelTask.fileCount ? `${modelTask.fileIndex}/${modelTask.fileCount} · ` : ''}${formatBytes(modelTask.downloadedBytes)}${modelTask.totalBytes ? ` / ${formatBytes(modelTask.totalBytes)}` : ''}`}
               error={modelTask.error}
               actions={
                 modelTask.stage === 'downloading' ? (
                   <IconButton icon={Square} label={t('stopTransfer')} onClick={() => void w.stopDownload()} />
                 ) : (
-                  <Button
-                    icon={RefreshCw}
-                    onClick={() => currentDownload && void w.downloadModel(currentDownload)}
-                  >
-                    {t('continueDownload')}
-                  </Button>
+                  <>
+                    <Button
+                      icon={RefreshCw}
+                      onClick={() => currentDownload && void w.downloadModel(currentDownload)}
+                    >
+                      {t('continueDownload')}
+                    </Button>
+                    {currentDownload && (
+                      <a
+                        className="m4a-icon-btn"
+                        href={currentDownload.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={t('openModelSource')}
+                        aria-label={t('openModelSource')}
+                      >
+                        <ArrowDownToLine size={15} />
+                      </a>
+                    )}
+                  </>
                 )
               }
             />
@@ -505,6 +533,27 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
         </div>
       )}
       {tab === 'run' && (
+        firstEngineSetup ? (
+          <section className="m4a-first-install">
+            <div className="m4a-first-install-mark">
+              {isInstalling(w.release) ? <RefreshCw size={28} className="m4a-spin" /> : <Package size={28} />}
+            </div>
+            <div>
+              <h3>{t(isInstalling(w.release) ? 'firstInstallRunning' : 'firstInstallAttention')}</h3>
+              <p>{t(isInstalling(w.release) ? 'firstInstallRunningBody' : 'firstInstallAttentionBody')}</p>
+            </div>
+            {!isInstalling(w.release) && (
+              <div className="m4a-inline">
+                <Button kind="primary" icon={RefreshCw} onClick={() => void w.install()}>
+                  {t('retryDownload')}
+                </Button>
+                <Button icon={FolderOpen} onClick={() => setTab('engines')}>
+                  {t('useLocalDownload')}
+                </Button>
+              </div>
+            )}
+          </section>
+        ) : (
         <>
           {(ready || starting || w.status?.phase === 'error' || w.status?.phase === 'duplicate-process') && (
             <section className="m4a-runtime">
@@ -601,6 +650,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
             </div>
           )}
         </>
+        )
       )}
       {tab === 'models' && (
         <ModelLibraryView
@@ -655,7 +705,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
           </pre>
         </section>
       )}
-      <footer className="m4a-footer">
+      {!firstEngineSetup && <footer className={`m4a-footer m4a-footer--${tab}`}>
         <div>
           <span className={`m4a-save-indicator ${w.dirty ? 'is-dirty' : ''}`} />
           {t(w.dirty ? 'pendingEdits' : 'saved')}
@@ -688,7 +738,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
             {t(primaryLabel)}
           </Button>
         </div>
-      </footer>
+      </footer>}
       {importKind && (
         <Dialog
           title={t(roleLabel[importKind])}

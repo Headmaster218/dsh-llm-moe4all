@@ -38,6 +38,7 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
   dirtyRef.current = dirty
   const directory = editor?.config.modelDirectory || defaultDirectory
   const previousDownload = useRef('idle')
+  const catalogRef = useRef<RecommendedModel[]>([])
   const scanGeneration = useRef(0)
 
   useEffect(() => {
@@ -111,18 +112,31 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
         setStatus(null)
         setError((previous) => previous || props.t('controlUnavailable'))
       }
-      if (engines.status === 'fulfilled') setRelease(engines.value)
+      if (engines.status === 'fulfilled') {
+        setRelease(engines.value)
+        const current = live.current
+        if (current?.config.mode !== 'connect' && !current?.config.executable && engines.value.installed) {
+          selectEngine(engines.value.installed)
+        }
+      }
       if (model.status === 'fulfilled') {
         setDownload(model.value)
         if (model.value.stage === 'complete' && previousDownload.current !== 'complete') {
           const setup = live.current?.setup
           void scan(model.value.directory, [
-            setup?.model ?? '',
-            setup?.visionModel ?? '',
-            setup?.mtpModel ?? '',
-            setup?.embeddingModel ?? '',
-            model.value.selectedFile ?? '',
-          ]).catch(report)
+              setup?.model ?? '',
+              setup?.visionModel ?? '',
+              setup?.mtpModel ?? '',
+              setup?.embeddingModel ?? '',
+              model.value.selectedFile ?? '',
+            ])
+            .then(() => {
+              const recommended = catalogRef.current.find(item => item.id === model.value.modelId)
+              if (recommended?.kind === 'main' && !live.current?.setup.model && model.value.selectedFile) {
+                selectModel(model.value.selectedFile, 'main')
+              }
+            })
+            .catch(report)
         }
         previousDownload.current = model.value.stage
       }
@@ -136,6 +150,7 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
       .then((result) => {
         if (disposed) return
         setCatalog(result.models)
+        catalogRef.current = result.models
         setNativePicker(result.capabilities.nativeFilePicker)
         setDefaultDirectory(result.defaultDirectory)
       })

@@ -85,6 +85,13 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
   const loader = (ctx as Context & { loader: LoaderLike }).loader
   const releases = new EngineReleaseManager()
   const downloads = new ModelDownloadManager()
+  if (config.mode !== 'connect' && !config.executable?.trim()) {
+    void releases.bootstrapLatest().then((result) => {
+      if (result.started) ctx.logger.info('First MoE4All setup: downloading the latest official engine release.')
+    }).catch((error: unknown) => {
+      ctx.logger.error(error instanceof Error ? error : new Error(String(error)))
+    })
+  }
   let source = (): Config => config
   let active: ActiveRuntime | undefined = startRuntime(ctx, loader, config)
   let activeSignature = configSignature(config)
@@ -192,7 +199,7 @@ export type {
   RunningProcess,
 } from './engine-controller.js'
 export { EngineReleaseManager, releaseFromTag, selectRelease } from './engine-release.js'
-export type { EngineInstallProgress, EngineInstallStage, EngineReleaseStatus, InstalledEngine, SelectedRelease } from './engine-release.js'
+export type { EngineBootstrapResult, EngineInstallProgress, EngineInstallStage, EngineReleaseStatus, InstalledEngine, SelectedRelease } from './engine-release.js'
 export { ENGINE_PATHS, isLoopbackRequest, makeEngineRoutes } from './host-routes.js'
 export { ModelDownloadManager, RECOMMENDED_MODELS } from './model-download.js'
 export type { ModelDownloadProgress, RecommendedModel, RecommendedModelKind } from './model-download.js'

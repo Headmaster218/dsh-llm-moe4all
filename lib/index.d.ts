@@ -140,7 +140,7 @@ export default plugin;
 export { EngineController, detectRunningEngines, effectiveLaunchMode, endpointFromConfig, parseTasklistCsv, probeEngineResources, probeHealth, resolveEngineExecutable, validateEndpoint, } from './engine-controller.js';
 export type { EffectiveLaunchMode, EngineConfig, EngineLogger, EnginePhase, EngineRuntimeStatus, EngineStartResult, LaunchMode, ResourceSnapshot, RunningProcess, } from './engine-controller.js';
 export { EngineReleaseManager, releaseFromTag, selectRelease } from './engine-release.js';
-export type { EngineInstallProgress, EngineInstallStage, EngineReleaseStatus, InstalledEngine, SelectedRelease } from './engine-release.js';
+export type { EngineBootstrapResult, EngineInstallProgress, EngineInstallStage, EngineReleaseStatus, InstalledEngine, SelectedRelease } from './engine-release.js';
 export { ENGINE_PATHS, isLoopbackRequest, makeEngineRoutes } from './host-routes.js';
 export { ModelDownloadManager, RECOMMENDED_MODELS } from './model-download.js';
 export type { ModelDownloadProgress, RecommendedModel, RecommendedModelKind } from './model-download.js';

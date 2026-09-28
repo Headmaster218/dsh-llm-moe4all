@@ -5,6 +5,8 @@ import { access, mkdir, open, readFile, readdir, rename, rm, stat, writeFile } f
 import { homedir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
+import { fetchDirectThenSystemProxy } from './network-fetch.js'
+
 const RELEASE_API = 'https://api.github.com/repos/Headmaster218/MoE4All/releases/latest'
 const RELEASE_LATEST_PAGE = 'https://github.com/Headmaster218/MoE4All/releases/latest'
 const WINDOWS_ASSET = /^MoE4All-Windows-x86_64-v.+\.zip$/iu
@@ -69,7 +71,13 @@ export interface EngineReleaseStatus {
   latest?: SelectedRelease
   updateAvailable: boolean
   install: EngineInstallProgress
+  bootstrapAttempted: boolean
   message?: string
+}
+
+export interface EngineBootstrapResult {
+  started: boolean
+  status: EngineReleaseStatus
 }
 
 export interface EngineReleaseDependencies {
@@ -142,7 +150,7 @@ async function expandArchiveWithPowerShell(archive: string, destination: string,
 }
 
 const DEFAULT_DEPENDENCIES: EngineReleaseDependencies = {
-  fetch: (input, init) => fetch(input, init),
+  fetch: fetchDirectThenSystemProxy,
   expandArchive: expandArchiveWithPowerShell,
 }
 
@@ -266,6 +274,10 @@ export class EngineReleaseManager {
     return join(this.root, 'installed.json')
   }
 
+  private get bootstrapPath(): string {
+    return join(this.root, 'first-install.json')
+  }
+
   private setProgress(next: EngineInstallProgress): void {
     this.installProgress = next
   }
@@ -367,6 +379,7 @@ export class EngineReleaseManager {
         versions: [],
         updateAvailable: false,
         install: this.progressSnapshot(),
+        bootstrapAttempted: await exists(this.bootstrapPath),
         message: 'Automatic MoE4All installation currently supports Windows x86_64 only.',
       }
     }
@@ -390,7 +403,29 @@ export class EngineReleaseManager {
       ...(message === undefined ? {} : { message }),
       updateAvailable: latest !== undefined && versions.find(item => resolve(item.executable) === resolve(currentExecutable || installed?.executable || '.'))?.tag !== latest.tag,
       install: this.progressSnapshot(),
+      bootstrapAttempted: await exists(this.bootstrapPath),
     }
+  }
+
+  async bootstrapLatest(currentExecutable = ''): Promise<EngineBootstrapResult> {
+    await mkdir(this.root, { recursive: true })
+    const current = await this.status(currentExecutable)
+    if (!current.supported || current.versions.length > 0 || current.bootstrapAttempted) {
+      return { started: false, status: current }
+    }
+    try {
+      const marker = await open(this.bootstrapPath, 'wx')
+      try {
+        await marker.writeFile(JSON.stringify({ attemptedAt: new Date().toISOString() }, null, 2), 'utf8')
+      } finally {
+        await marker.close()
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      return { started: false, status: await this.status(currentExecutable) }
+    }
+    void this.installLatest().catch(() => {})
+    return { started: true, status: await this.status(currentExecutable) }
   }
 
   installLatest(): Promise<InstalledEngine> {

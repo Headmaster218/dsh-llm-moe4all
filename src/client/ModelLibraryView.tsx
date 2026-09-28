@@ -202,6 +202,17 @@ export function ModelLibraryView({
                           </a>
                         )}
                       </div>
+                      {active && (
+                        <div className="m4a-model-download" role="status">
+                          <progress value={w.download.percent ?? 0} max={100} />
+                          <span>
+                            {w.download.fileIndex && w.download.fileCount
+                              ? `${w.download.fileIndex}/${w.download.fileCount} · `
+                              : ''}
+                            {formatBytes(w.download.downloadedBytes)} / {formatBytes(w.download.totalBytes ?? item.size)}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </article>
                 )

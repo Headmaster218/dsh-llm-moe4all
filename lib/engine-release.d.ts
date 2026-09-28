@@ -43,7 +43,12 @@ export interface EngineReleaseStatus {
     latest?: SelectedRelease;
     updateAvailable: boolean;
     install: EngineInstallProgress;
+    bootstrapAttempted: boolean;
     message?: string;
+}
+export interface EngineBootstrapResult {
+    started: boolean;
+    status: EngineReleaseStatus;
 }
 export interface EngineReleaseDependencies {
     fetch(input: string | URL, init?: RequestInit): Promise<Response>;
@@ -61,12 +66,14 @@ export declare class EngineReleaseManager {
     private installAbort;
     constructor(root?: string, dependencies?: Partial<EngineReleaseDependencies>);
     private get metadataPath();
+    private get bootstrapPath();
     private setProgress;
     private progressSnapshot;
     latest(force?: boolean): Promise<SelectedRelease>;
     installed(): Promise<InstalledEngine | undefined>;
     versions(): Promise<InstalledEngine[]>;
     status(currentExecutable?: string, force?: boolean): Promise<EngineReleaseStatus>;
+    bootstrapLatest(currentExecutable?: string): Promise<EngineBootstrapResult>;
     installLatest(): Promise<InstalledEngine>;
     installFromLocal(input: string): Promise<InstalledEngine>;
     cancelInstall(): EngineInstallProgress;

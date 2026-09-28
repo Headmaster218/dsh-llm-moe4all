@@ -173,3 +173,55 @@ test('local engine inventory stays usable offline without probing GitHub on each
     assert(requests > 0)
   } finally { await rm(root, { recursive: true, force: true }) }
 })
+
+test('first activation starts one automatic engine install and records the attempt', { skip: process.platform !== 'win32' }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'moe4all-bootstrap-'))
+  try {
+    const manager = new EngineReleaseManager(root, {
+      async fetch(input) {
+        if (String(input).includes('/releases/latest')) return Response.json(release)
+        if (String(input).endsWith('.sha256')) return new Response(`${digest}  ${release.assets[0]!.name}\n`)
+        return new Response(archive)
+      },
+      async expandArchive(_path, destination) {
+        await mkdir(destination, { recursive: true })
+        await writeFile(join(destination, 'infr.exe'), 'fake')
+      },
+    })
+
+    const first = await manager.bootstrapLatest()
+    assert.equal(first.started, true)
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const status = await manager.status()
+      if (status.install.stage === 'complete') break
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    assert.equal((await manager.status()).install.stage, 'complete')
+    assert.equal((await manager.bootstrapLatest()).started, false)
+    assert.equal((await manager.status()).bootstrapAttempted, true)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('a failed first automatic install is not silently repeated on the next activation', { skip: process.platform !== 'win32' }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'moe4all-bootstrap-failed-'))
+  try {
+    let requests = 0
+    const manager = new EngineReleaseManager(root, {
+      async fetch() {
+        requests += 1
+        throw new Error('offline')
+      },
+    })
+    assert.equal((await manager.bootstrapLatest()).started, true)
+    for (let attempt = 0; attempt < 50 && (await manager.status()).install.stage !== 'error'; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    const afterFailure = requests
+    assert.equal((await manager.bootstrapLatest()).started, false)
+    assert.equal(requests, afterFailure)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})

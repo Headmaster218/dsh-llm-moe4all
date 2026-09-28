@@ -2,6 +2,8 @@ import { constants as fsConstants } from 'node:fs'
 import { access, mkdir, open, rename, stat, statfs } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
+import { fetchDirectThenSystemProxy } from './network-fetch.js'
+
 export type RecommendedModelKind = 'main' | 'vision' | 'embedding' | 'mtp'
 
 export interface RecommendedModelFile {
@@ -216,7 +218,7 @@ async function exists(path: string): Promise<boolean> {
 }
 
 const DEFAULT_DEPENDENCIES: ModelDownloadDependencies = {
-  fetch: (input, init) => fetch(input, init),
+  fetch: fetchDirectThenSystemProxy,
 }
 
 export class ModelDownloadManager {
