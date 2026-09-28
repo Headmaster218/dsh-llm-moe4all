@@ -1,5 +1,5 @@
 import { readdir, stat } from 'node:fs/promises'
-import { dirname, extname, join, resolve } from 'node:path'
+import { basename, dirname, extname, join, resolve } from 'node:path'
 
 export type ModelFileKind = 'main' | 'vision' | 'embedding' | 'mtp'
 
@@ -17,6 +17,23 @@ export interface SetupModelPaths {
   vision?: string
   embedding?: string
   mtp?: string
+}
+
+export interface LocalModelEntry {
+  id: string
+  path: string
+  directory: string
+  kind: ModelFileKind
+  family: string
+  name: string
+  quantization: string
+  sizeBytes: number
+  fileCount: number
+}
+
+export interface LocalModelLibrary {
+  directory: string
+  models: LocalModelEntry[]
 }
 
 function stripOuterQuotes(value: string): string {
@@ -42,6 +59,120 @@ function modelKind(path: string): ModelFileKind {
 function isFirstOrOnlyShard(path: string): boolean {
   const match = /-(\d{5})-of-\d{5}\.gguf$/iu.exec(path)
   return match === null || match[1] === '00001'
+}
+
+function shardIdentity(path: string): string {
+  return path.replace(/-\d{5}-of-\d{5}\.gguf$/iu, '')
+}
+
+function modelFamily(name: string): string {
+  if (/qwen3[.-]?8.*flash.*next/iu.test(name)) return 'Qwen3.8 Flash Next'
+  if (/qwen3[.-]?6.*35b/iu.test(name)) return 'Qwen3.6 35B-A3B'
+  if (/qwen3.*embedding/iu.test(name)) return 'Qwen3 Embedding'
+  if (/nomic.*embed/iu.test(name)) return 'Nomic Embedding'
+  const normalized = name.replace(/[-_.]+/gu, ' ').trim()
+  return normalized.split(/\s+(?=(?:AD-|Q\d|F16|BF16|F32|APEX|MTP))/iu, 1)[0] || 'Other models'
+}
+
+function modelQuantization(name: string): string {
+  const patterns = [
+    /AD-\d+(?:\.\d+)?bpw-Q\d+_[A-Z0-9_]+(?:-M\d+)?/iu,
+    /APEX-[A-Z0-9_-]+/iu,
+    /Q\d+_[A-Z0-9_]+/iu,
+    /\b(?:BF16|F16|F32)\b/iu,
+  ]
+  for (const pattern of patterns) {
+    const match = pattern.exec(name)?.[0]
+    if (match !== undefined) return match
+  }
+  return 'GGUF'
+}
+
+interface LibraryFile {
+  path: string
+  size: number
+}
+
+async function collectModelFiles(directory: string, maxDepth: number, result: Map<string, LibraryFile>): Promise<void> {
+  const pending: Array<{ directory: string, depth: number }> = [{ directory, depth: 0 }]
+  const visited = new Set<string>()
+  while (pending.length > 0) {
+    const current = pending.shift()!
+    const key = current.directory.toLowerCase()
+    if (visited.has(key)) continue
+    visited.add(key)
+    let entries
+    try {
+      entries = await readdir(current.directory, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      const path = join(current.directory, entry.name)
+      if (entry.isDirectory() && current.depth < maxDepth) {
+        pending.push({ directory: path, depth: current.depth + 1 })
+      } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.gguf') {
+        try {
+          result.set(path.toLowerCase(), { path, size: (await stat(path)).size })
+        } catch {}
+      }
+    }
+  }
+}
+
+export async function discoverModelLibrary(input: string, selectedPaths: string[] = []): Promise<LocalModelLibrary> {
+  const normalized = stripOuterQuotes(input)
+  const files = new Map<string, LibraryFile>()
+  let directory = normalized === '' ? '' : resolve(normalized)
+  if (directory !== '') {
+    const details = await stat(directory)
+    if (details.isFile()) directory = dirname(directory)
+    else if (!details.isDirectory()) throw new Error('The model library path is not a file or directory.')
+    await collectModelFiles(directory, 4, files)
+  }
+  for (const raw of selectedPaths) {
+    const value = stripOuterQuotes(raw)
+    if (value === '') continue
+    const path = resolve(value)
+    try {
+      const details = await stat(path)
+      if (details.isFile() && extname(path).toLowerCase() === '.gguf') {
+        await collectModelFiles(dirname(path), 0, files)
+      }
+    } catch {}
+  }
+
+  const groups = new Map<string, LibraryFile[]>()
+  for (const item of files.values()) {
+    const key = shardIdentity(item.path).toLowerCase()
+    const group = groups.get(key) ?? []
+    group.push(item)
+    groups.set(key, group)
+  }
+  const rank: Record<ModelFileKind, number> = { main: 0, vision: 1, mtp: 2, embedding: 3 }
+  const models = [...groups.entries()].map(([id, group]): LocalModelEntry => {
+    group.sort((left, right) => left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: 'base' }))
+    const first = group[0]!
+    const rawName = basename(shardIdentity(first.path))
+    const name = rawName.replace(/\.gguf$/iu, '')
+    return {
+      id,
+      path: first.path,
+      directory: dirname(first.path),
+      kind: modelKind(name),
+      family: modelFamily(name),
+      name,
+      quantization: modelQuantization(name),
+      sizeBytes: group.reduce((sum, item) => sum + item.size, 0),
+      fileCount: group.length,
+    }
+  })
+  models.sort((left, right) => (
+    left.family.localeCompare(right.family, undefined, { sensitivity: 'base', numeric: true })
+    || rank[left.kind] - rank[right.kind]
+    || left.name.localeCompare(right.name, undefined, { sensitivity: 'base', numeric: true })
+  ))
+  return { directory, models }
 }
 
 export async function discoverLocalModelFiles(input: string): Promise<LocalModelFiles> {

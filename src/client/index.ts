@@ -5,6 +5,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 
 import type { Config } from '../index.js'
 import { EngineStartupOverlay } from './EngineStartupOverlay.js'
+import { Moe4AllOnboarding } from './Moe4AllOnboarding.js'
 import { Moe4AllSettings, type Moe4AllSettingsInjected } from './Moe4AllSettings.js'
 import { en, zh } from './locales.js'
 import { styles } from './styles.js'
@@ -32,6 +33,7 @@ export function apply(ctx: ClientContext): void {
 
   const injected = (): Moe4AllSettingsInjected => ({
     hooks: { moe4AllSettings: scope },
+    pickDirectory: () => ctx.workspaces.pickDirectory(),
     async save(next: Config): Promise<void> {
       const current = scope.getSnapshot().value
       if (current === undefined) return
@@ -48,6 +50,12 @@ export function apply(ctx: ClientContext): void {
     inject: injected,
   }, Moe4AllSettings))
 
+  ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
+    name: 'settings.onboarding',
+    id: 'moe4all-setup',
+    order: -50,
+  }, owner => createElement(Moe4AllOnboarding, { ...owner, scope })))
+
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',
     id: 'moe4all-engine-startup',
@@ -55,7 +63,6 @@ export function apply(ctx: ClientContext): void {
   }, () => createElement(EngineStartupOverlay, {
     scope,
     t: ctx.locale.bind('settings.moe4all'),
-    pickDirectory: () => ctx.workspaces.pickDirectory(),
   })))
 }
 

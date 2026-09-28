@@ -7,6 +7,7 @@ export interface RecommendedModelFile {
 export interface RecommendedModel {
     id: string;
     kind: RecommendedModelKind;
+    family: string;
     name: string;
     architecture: string;
     quantization: string;
@@ -18,7 +19,7 @@ export interface RecommendedModel {
     supportsMtp: boolean;
     supportsVision: boolean;
 }
-export type ModelDownloadStage = 'idle' | 'downloading' | 'complete' | 'error';
+export type ModelDownloadStage = 'idle' | 'downloading' | 'complete' | 'cancelled' | 'error';
 export interface ModelDownloadProgress {
     stage: ModelDownloadStage;
     modelId?: string;
@@ -42,10 +43,12 @@ export declare class ModelDownloadManager {
     private readonly models;
     private current;
     private active;
+    private abort;
     constructor(dependencies?: Partial<ModelDownloadDependencies>, models?: RecommendedModel[]);
     catalog(): RecommendedModel[];
     status(): ModelDownloadProgress;
     start(modelId: string, directory: string): ModelDownloadProgress;
+    cancel(): ModelDownloadProgress;
     private download;
     private updateFile;
 }

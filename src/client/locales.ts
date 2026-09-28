@@ -33,9 +33,40 @@ export type Moe4AllLocaleKey =
   | 'modelDownloadProgress' | 'modelDownloadComplete' | 'modelDownloadRetry' | 'sourcePage'
   | 'startupProgressTitle' | 'startupProgressBody' | 'startupOutput' | 'startupFailedTitle'
   | 'retryStart' | 'ramBudgetAdjusted'
+  | 'engineVersion' | 'engineNotInstalled' | 'deleteEngine' | 'confirmDeleteEngine'
+  | 'stopDownload' | 'downloadFailed' | 'currentConfiguration' | 'currentConfigurationHint'
+  | 'mainModel' | 'visionModel' | 'mtpModel' | 'embeddingModel' | 'notSelected'
+  | 'removeSelection' | 'modelLibrary' | 'modelLibraryHint' | 'scanning' | 'rescan'
+  | 'noModelsInLibrary' | 'recommended' | 'notDownloaded' | 'files' | 'selected'
+  | 'useModel' | 'modelDirectoryRequired'
 
 export const en: Record<Moe4AllLocaleKey, string> = {
   nav: 'MoE4All',
+  engineVersion: 'Engine version',
+  engineNotInstalled: 'No managed engine selected',
+  deleteEngine: 'Delete version',
+  confirmDeleteEngine: 'Delete this managed engine version? Model files and settings will not be removed.',
+  stopDownload: 'Stop',
+  downloadFailed: 'Download failed.',
+  currentConfiguration: 'Current model and runtime',
+  currentConfigurationHint: 'This is the configuration MoE4All will use the next time it starts.',
+  mainModel: 'Main model',
+  visionModel: 'Vision',
+  mtpModel: 'MTP',
+  embeddingModel: 'Embedding',
+  notSelected: 'Not selected',
+  removeSelection: 'Remove',
+  modelLibrary: 'Model library',
+  modelLibraryHint: 'Local models and official recommendations are grouped by family.',
+  scanning: 'Scanning...',
+  rescan: 'Rescan',
+  noModelsInLibrary: 'No local or recommended models are available.',
+  recommended: 'Recommended',
+  notDownloaded: 'Not downloaded',
+  files: 'files',
+  selected: 'Selected',
+  useModel: 'Use',
+  modelDirectoryRequired: 'Choose a model directory before downloading.',
   modelDirectory: 'Model download directory',
   chooseFile: 'Choose file',
   recommendedModel: 'Recommended model',
@@ -184,6 +215,31 @@ export const en: Record<Moe4AllLocaleKey, string> = {
 
 export const zh: Record<Moe4AllLocaleKey, string> = {
   nav: 'MoE4All',
+  engineVersion: '引擎版本',
+  engineNotInstalled: '未选择托管引擎',
+  deleteEngine: '删除版本',
+  confirmDeleteEngine: '确定删除这个托管引擎版本吗？模型文件和设置不会被删除。',
+  stopDownload: '停止',
+  downloadFailed: '下载失败。',
+  currentConfiguration: '当前模型与运行配置',
+  currentConfigurationHint: 'MoE4All 下次启动时将使用这里的配置。',
+  mainModel: '主模型',
+  visionModel: '视觉',
+  mtpModel: 'MTP',
+  embeddingModel: 'Embedding',
+  notSelected: '未选择',
+  removeSelection: '移除',
+  modelLibrary: '模型库',
+  modelLibraryHint: '本地模型与官方推荐模型按家族归类显示。',
+  scanning: '扫描中...',
+  rescan: '重新扫描',
+  noModelsInLibrary: '暂无本地或推荐模型。',
+  recommended: '推荐',
+  notDownloaded: '未下载',
+  files: '个文件',
+  selected: '已选用',
+  useModel: '选用',
+  modelDirectoryRequired: '请先选择模型下载目录。',
   modelDirectory: '模型下载目录',
   chooseFile: '选择文件',
   recommendedModel: '推荐模型',

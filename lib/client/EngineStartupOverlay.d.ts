@@ -6,8 +6,7 @@ type Translate = (key: Moe4AllLocaleKey) => string;
 interface Props {
     scope: SettingsScope<Config>;
     t: Translate;
-    pickDirectory(): Promise<string | null>;
 }
-export declare function EngineStartupOverlay({ scope, t, pickDirectory }: Props): ReactNode;
+export declare function EngineStartupOverlay({ scope, t }: Props): ReactNode;
 export {};
 //# sourceMappingURL=EngineStartupOverlay.d.ts.map

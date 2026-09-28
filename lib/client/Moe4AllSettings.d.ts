@@ -7,6 +7,7 @@ export interface Moe4AllSettingsInjected {
     hooks: {
         moe4AllSettings: SettingsScope<Config>;
     };
+    pickDirectory(): Promise<string | null>;
     save(next: Config): Promise<void>;
 }
 export type Moe4AllSettingsProps = PropsRuntime<'settings.section'> & PropsLocale<'settings.moe4all'> & InjectFace<Moe4AllSettingsInjected>;

@@ -23,6 +23,19 @@ export interface EngineSetupValues {
   sessionCache?: SessionCacheSetup
 }
 
+export interface ParsedEngineArguments {
+  model: string
+  visionModel: string
+  embeddingModel: string
+  mtpModel: string
+  embeddingIdleTimeout: number
+  parallel: number
+  profile: EngineAutoProfile
+  mtp: boolean
+  sessionCacheEnabled: boolean
+  sessionCache: SessionCacheSetup
+}
+
 export function normalizeSetupPath(value: string): string {
   const trimmed = value.trim()
   if (trimmed.length >= 2) {
@@ -41,6 +54,54 @@ function positiveInteger(value: number, message: string): void {
 
 function nonNegativeInteger(value: number, message: string): void {
   if (!Number.isSafeInteger(value) || value < 0) throw new Error(message)
+}
+
+function optionValue(arguments_: string[], option: string): string | undefined {
+  const index = arguments_.lastIndexOf(option)
+  return index < 0 ? undefined : arguments_[index + 1]
+}
+
+function setValue(arguments_: string[], path: string): string | undefined {
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const argument = arguments_[index]!
+    if (argument === '--set') {
+      const value = arguments_[index + 1]
+      if (value?.startsWith(`${path}=`)) return value.slice(path.length + 1)
+      index += 1
+      continue
+    }
+    const inline = /^--set=(.+)$/u.exec(argument)?.[1]
+    if (inline?.startsWith(`${path}=`)) return inline.slice(path.length + 1)
+  }
+  return undefined
+}
+
+function integer(value: string | undefined, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback
+}
+
+export function parseEngineArguments(arguments_: string[]): ParsedEngineArguments {
+  const sessionDirectory = setValue(arguments_, 'kv.session_cache_dir') ?? 'kv-sessions'
+  const model = [...arguments_].reverse().find(value => /\.gguf$/iu.test(value)) ?? ''
+  const mtpModel = setValue(arguments_, 'spec.draft') ?? ''
+  return {
+    model: model === mtpModel ? '' : model,
+    visionModel: optionValue(arguments_, '--mmproj') ?? '',
+    embeddingModel: optionValue(arguments_, '--embedding-model') ?? '',
+    mtpModel,
+    embeddingIdleTimeout: integer(optionValue(arguments_, '--embedding-idle-timeout'), 60),
+    parallel: Math.max(1, integer(optionValue(arguments_, '--parallel'), 1)),
+    profile: setValue(arguments_, 'device.auto_profile') === 'aggressive' ? 'aggressive' : 'conservative',
+    mtp: setValue(arguments_, 'spec.mtp') === 'true',
+    sessionCacheEnabled: sessionDirectory !== '',
+    sessionCache: {
+      directory: sessionDirectory || 'kv-sessions',
+      maxSize: setValue(arguments_, 'kv.session_cache_max') ?? '10g',
+      idleSeconds: integer(setValue(arguments_, 'kv.session_idle_secs'), 90),
+      ttlHours: integer(setValue(arguments_, 'kv.session_cache_ttl_hours'), 24),
+    },
+  }
 }
 
 export function buildEngineArguments(values: EngineSetupValues): string[] {

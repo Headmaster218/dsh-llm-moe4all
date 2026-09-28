@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -69,6 +69,36 @@ test('managed installation verifies the release and stores it outside plugin con
   }
 })
 
+test('managed engine downloads can be cancelled and retried', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'moe4all-release-cancel-'))
+  try {
+    let signalArchiveStarted: (() => void) | undefined
+    const archiveStarted = new Promise<void>((resolve) => { signalArchiveStarted = resolve })
+    const manager = new EngineReleaseManager(root, {
+      async fetch(input, init) {
+        if (String(input).includes('/releases/latest')) return Response.json(release)
+        if (String(input).endsWith('.sha256')) return new Response(`${digest}  ${release.assets[0]!.name}\n`)
+        signalArchiveStarted?.()
+        return new Response(new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('test'))
+            const fail = () => controller.error(new DOMException('cancelled', 'AbortError'))
+            init?.signal?.addEventListener('abort', fail, { once: true })
+          },
+        }), { headers: { 'content-length': String(archive.byteLength) } })
+      },
+    })
+
+    const installing = manager.installLatest()
+    await archiveStarted
+    assert.equal(manager.cancelInstall().stage, 'cancelled')
+    await assert.rejects(installing, /cancelled/u)
+    assert.equal((await manager.status()).install.stage, 'cancelled')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('a manually downloaded or extracted engine can be adopted without copying it', { skip: process.platform !== 'win32' }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'moe4all-release-test-'))
   const local = await mkdtemp(join(tmpdir(), 'moe4all-local-test-'))
@@ -91,5 +121,28 @@ test('a manually downloaded or extracted engine can be adopted without copying i
   } finally {
     await rm(root, { recursive: true, force: true })
     await rm(local, { recursive: true, force: true })
+  }
+})
+
+test('managed engine versions can be enumerated and only inactive versions can be deleted', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'moe4all-versions-test-'))
+  try {
+    const oldDirectory = join(root, 'releases', 'release-0.7.0', 'MoE4All')
+    const currentDirectory = join(root, 'releases', 'release-0.8.0', 'MoE4All')
+    await mkdir(oldDirectory, { recursive: true })
+    await mkdir(currentDirectory, { recursive: true })
+    const oldExecutable = join(oldDirectory, 'infr.exe')
+    const currentExecutable = join(currentDirectory, 'infr.exe')
+    await writeFile(oldExecutable, 'old')
+    await writeFile(currentExecutable, 'current')
+    const manager = new EngineReleaseManager(root)
+    const versions = await manager.versions()
+    assert.deepEqual(versions.map(item => item.tag).sort(), ['release-0.7.0', 'release-0.8.0'])
+    await assert.rejects(manager.remove('release-0.8.0', currentExecutable), /Select another engine version/u)
+    await manager.remove('release-0.7.0', currentExecutable)
+    await assert.rejects(access(oldDirectory))
+    await access(currentExecutable)
+  } finally {
+    await rm(root, { recursive: true, force: true })
   }
 })

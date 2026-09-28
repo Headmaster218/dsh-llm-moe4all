@@ -1,6 +1,6 @@
 import type { EngineControlStatus } from '../host-routes.js'
-import type { EngineReleaseStatus, InstalledEngine } from '../engine-release.js'
-import type { LocalModelFiles, SetupModelPaths } from '../model-files.js'
+import type { EngineInstallProgress, EngineReleaseStatus } from '../engine-release.js'
+import type { LocalModelFiles, LocalModelLibrary, SetupModelPaths } from '../model-files.js'
 import type { ModelDownloadProgress, RecommendedModel } from '../model-download.js'
 
 interface StartResponse {
@@ -49,20 +49,33 @@ export function fetchReleaseStatus(force = false): Promise<ReleaseResponse> {
   return json(`/api/moe4all/release${force ? '?force=1' : ''}`)
 }
 
-export async function installLatestEngine(): Promise<InstalledEngine> {
-  const result = await json<{ ok: boolean, installed: InstalledEngine }>('/api/moe4all/install', {
+export async function installLatestEngine(): Promise<void> {
+  await json<{ ok: boolean }>('/api/moe4all/install', {
     method: 'POST',
     body: '{}',
   })
-  return result.installed
 }
 
-export async function installLocalEngine(path: string): Promise<InstalledEngine> {
-  const result = await json<{ ok: boolean, installed: InstalledEngine }>('/api/moe4all/install-local', {
+export async function installLocalEngine(path: string): Promise<void> {
+  await json<{ ok: boolean }>('/api/moe4all/install-local', {
     method: 'POST',
     body: JSON.stringify({ path }),
   })
-  return result.installed
+}
+
+export async function cancelEngineInstall(): Promise<EngineInstallProgress> {
+  const result = await json<{ ok: boolean, install: EngineInstallProgress }>('/api/moe4all/install-cancel', {
+    method: 'POST',
+    body: '{}',
+  })
+  return result.install
+}
+
+export async function deleteEngineVersion(tag: string): Promise<void> {
+  await json<{ ok: boolean }>('/api/moe4all/engine-delete', {
+    method: 'POST',
+    body: JSON.stringify({ tag }),
+  })
 }
 
 export async function scanModelPath(path: string): Promise<LocalModelFiles> {
@@ -71,6 +84,14 @@ export async function scanModelPath(path: string): Promise<LocalModelFiles> {
     body: JSON.stringify({ path }),
   })
   return result.files
+}
+
+export async function scanModelLibrary(directory: string, selectedPaths: string[]): Promise<LocalModelLibrary> {
+  const result = await json<{ ok: boolean, library: LocalModelLibrary }>('/api/moe4all/model-library', {
+    method: 'POST',
+    body: JSON.stringify({ directory, selectedPaths }),
+  })
+  return result.library
 }
 
 export async function validateModelPaths(paths: SetupModelPaths): Promise<SetupModelPaths> {
@@ -102,6 +123,14 @@ export async function startModelDownload(modelId: string, directory: string): Pr
   const result = await json<{ ok: boolean, download: ModelDownloadProgress }>('/api/moe4all/model-download', {
     method: 'POST',
     body: JSON.stringify({ modelId, directory }),
+  })
+  return result.download
+}
+
+export async function cancelModelDownload(): Promise<ModelDownloadProgress> {
+  const result = await json<{ ok: boolean, download: ModelDownloadProgress }>('/api/moe4all/model-download-cancel', {
+    method: 'POST',
+    body: '{}',
   })
   return result.download
 }

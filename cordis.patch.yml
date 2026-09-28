@@ -31,7 +31,7 @@
         shutdownTimeoutMs: 5000
         stopOnUnload: true
         logOutput: true
-        contextWindow: 262144
+        contextWindow: 163840
         maxTokens: 102400
         vision: true
         excludeModelNameContains:

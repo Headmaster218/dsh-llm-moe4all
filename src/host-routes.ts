@@ -2,10 +2,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 
 import type { EngineController, EngineRuntimeStatus, EngineStartResult } from './engine-controller.js'
-import type { EngineReleaseManager, EngineReleaseStatus, InstalledEngine } from './engine-release.js'
+import type { EngineReleaseManager, EngineReleaseStatus } from './engine-release.js'
 import type { ModelDownloadManager } from './model-download.js'
 import type { DiscoveredModel } from './model-provider.js'
-import { discoverLocalModelFiles, type LocalModelFiles, type SetupModelPaths, validateSetupModelPaths } from './model-files.js'
+import { discoverLocalModelFiles, discoverModelLibrary, type LocalModelFiles, type SetupModelPaths, validateSetupModelPaths } from './model-files.js'
 import { nativeFilePickerAvailable, pickGgufFile } from './native-file-picker.js'
 
 export const ENGINE_PATHS = {
@@ -13,12 +13,16 @@ export const ENGINE_PATHS = {
   start: '/api/moe4all/start',
   release: '/api/moe4all/release',
   install: '/api/moe4all/install',
+  cancelInstall: '/api/moe4all/install-cancel',
   installLocal: '/api/moe4all/install-local',
+  deleteEngine: '/api/moe4all/engine-delete',
   modelFiles: '/api/moe4all/model-files',
+  modelLibrary: '/api/moe4all/model-library',
   validateModels: '/api/moe4all/validate-models',
   pickModelFile: '/api/moe4all/pick-model-file',
   modelCatalog: '/api/moe4all/model-catalog',
   modelDownload: '/api/moe4all/model-download',
+  cancelModelDownload: '/api/moe4all/model-download-cancel',
 } as const
 
 export interface EngineControlStatus extends EngineRuntimeStatus {
@@ -164,11 +168,16 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
   const handleInstall = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     if (!method(request, response, 'POST') || !fenced(request, response)) return
     try {
-      const installed: InstalledEngine = await access.releases.installLatest()
-      writeJson(response, 200, { ok: true, installed })
+      void access.releases.installLatest().catch(() => {})
+      writeJson(response, 202, { ok: true })
     } catch (error) {
       writeJson(response, 500, { ok: false, message: error instanceof Error ? error.message : String(error) })
     }
+  }
+
+  const handleCancelInstall = (request: IncomingMessage, response: ServerResponse): void => {
+    if (!method(request, response, 'POST') || !fenced(request, response)) return
+    writeJson(response, 200, { ok: true, install: access.releases.cancelInstall() })
   }
 
   const handleInstallLocal = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
@@ -179,10 +188,30 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
       return
     }
     try {
-      const installed: InstalledEngine = await access.releases.installFromLocal(body.path)
-      writeJson(response, 200, { ok: true, installed })
+      void access.releases.installFromLocal(body.path).catch(() => {})
+      writeJson(response, 202, { ok: true })
     } catch (error) {
       writeJson(response, 500, { ok: false, message: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  const handleDeleteEngine = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    if (!method(request, response, 'POST') || !fenced(request, response)) return
+    const body = await readJson(request)
+    if (body === undefined || typeof body.tag !== 'string' || body.tag.trim() === '') {
+      writeJson(response, 400, { ok: false, code: 'invalid-engine-version', message: 'An engine version is required.' })
+      return
+    }
+    const controller = access.controller()
+    if (controller?.statusSnapshot().ready === true) {
+      writeJson(response, 409, { ok: false, code: 'engine-running', message: 'Stop the managed engine before deleting an engine version.' })
+      return
+    }
+    try {
+      await access.releases.remove(body.tag, access.configuredExecutable())
+      writeJson(response, 200, { ok: true })
+    } catch (error) {
+      writeJson(response, 409, { ok: false, code: 'engine-delete-failed', message: error instanceof Error ? error.message : String(error) })
     }
   }
 
@@ -230,6 +259,24 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
     }
   }
 
+  const handleModelLibrary = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    if (!method(request, response, 'POST') || !fenced(request, response)) return
+    const body = await readJson(request)
+    const directory = body?.directory
+    const selectedPaths = body?.selectedPaths
+    if (typeof directory !== 'string'
+      || (selectedPaths !== undefined && (!Array.isArray(selectedPaths) || selectedPaths.some(item => typeof item !== 'string')))) {
+      writeJson(response, 400, { ok: false, code: 'invalid-model-library', message: 'A model directory and string path list are required.' })
+      return
+    }
+    try {
+      const library = await discoverModelLibrary(directory, selectedPaths as string[] | undefined)
+      writeJson(response, 200, { ok: true, library })
+    } catch (error) {
+      writeJson(response, 400, { ok: false, code: 'model-library-failed', message: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
   const handlePickModelFile = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     if (!method(request, response, 'POST') || !fenced(request, response)) return
     if (!nativeFilePickerAvailable()) {
@@ -272,16 +319,25 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
     }
   }
 
+  const handleCancelModelDownload = (request: IncomingMessage, response: ServerResponse): void => {
+    if (!method(request, response, 'POST') || !fenced(request, response)) return
+    writeJson(response, 200, { ok: true, download: access.downloads.cancel() })
+  }
+
   return [
     { kind: 'exact', path: ENGINE_PATHS.status, handler: handleStatus },
     { kind: 'exact', path: ENGINE_PATHS.start, handler: handleStart },
     { kind: 'exact', path: ENGINE_PATHS.release, handler: handleRelease },
     { kind: 'exact', path: ENGINE_PATHS.install, handler: handleInstall },
+    { kind: 'exact', path: ENGINE_PATHS.cancelInstall, handler: handleCancelInstall },
     { kind: 'exact', path: ENGINE_PATHS.installLocal, handler: handleInstallLocal },
+    { kind: 'exact', path: ENGINE_PATHS.deleteEngine, handler: handleDeleteEngine },
     { kind: 'exact', path: ENGINE_PATHS.modelFiles, handler: handleModelFiles },
+    { kind: 'exact', path: ENGINE_PATHS.modelLibrary, handler: handleModelLibrary },
     { kind: 'exact', path: ENGINE_PATHS.validateModels, handler: handleValidateModels },
     { kind: 'exact', path: ENGINE_PATHS.pickModelFile, handler: handlePickModelFile },
     { kind: 'exact', path: ENGINE_PATHS.modelCatalog, handler: handleModelCatalog },
     { kind: 'exact', path: ENGINE_PATHS.modelDownload, handler: handleModelDownload },
+    { kind: 'exact', path: ENGINE_PATHS.cancelModelDownload, handler: handleCancelModelDownload },
   ]
 }

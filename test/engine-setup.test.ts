@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { buildEngineArguments } from '../src/client/engine-setup.js'
+import { buildEngineArguments, parseEngineArguments } from '../src/client/engine-setup.js'
 
 test('first-run setup keeps conservative engine defaults automatic', () => {
   assert.deepEqual(buildEngineArguments({
@@ -85,4 +85,34 @@ test('first-run setup requires an MTP head when MTP is enabled', () => {
     profile: 'conservative',
     mtp: true,
   }), /MTP head GGUF path/u)
+})
+
+test('saved engine arguments round-trip into the unified settings editor', () => {
+  const arguments_ = buildEngineArguments({
+    model: 'D:\\Models\\chat.gguf',
+    visionModel: 'D:\\Models\\mmproj.gguf',
+    embeddingModel: 'D:\\Models\\embed.gguf',
+    mtpModel: 'D:\\Models\\mtp.gguf',
+    embeddingIdleTimeout: 45,
+    host: '127.0.0.1',
+    port: 8080,
+    contextWindow: 163_840,
+    maxTokens: 102_400,
+    parallel: 2,
+    profile: 'aggressive',
+    mtp: true,
+    sessionCache: { directory: 'kv-sessions', maxSize: '5g', idleSeconds: 120, ttlHours: 48 },
+  })
+  assert.deepEqual(parseEngineArguments(arguments_), {
+    model: 'D:\\Models\\chat.gguf',
+    visionModel: 'D:\\Models\\mmproj.gguf',
+    embeddingModel: 'D:\\Models\\embed.gguf',
+    mtpModel: 'D:\\Models\\mtp.gguf',
+    embeddingIdleTimeout: 45,
+    parallel: 2,
+    profile: 'aggressive',
+    mtp: true,
+    sessionCacheEnabled: true,
+    sessionCache: { directory: 'kv-sessions', maxSize: '5g', idleSeconds: 120, ttlHours: 48 },
+  })
 })

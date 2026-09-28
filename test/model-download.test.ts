@@ -23,6 +23,7 @@ test('recommended model downloads resume a partial file and finish atomically', 
   const tiny: RecommendedModel = {
     id: 'tiny-test',
     kind: 'main',
+    family: 'Tiny',
     name: 'Tiny test model',
     architecture: 'test',
     quantization: 'test',
@@ -61,4 +62,47 @@ test('recommended model downloads resume a partial file and finish atomically', 
   })
   assert.equal(await readFile(join(root, 'tiny', 'tiny.gguf'), 'utf8'), 'abcdef')
   await rm(root, { recursive: true, force: true })
+})
+
+test('model downloads can be cancelled and leave a resumable partial file', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'moe4all-model-cancel-'))
+  const tiny: RecommendedModel = {
+    id: 'tiny-cancel',
+    kind: 'main',
+    family: 'Tiny',
+    name: 'Tiny cancel model',
+    architecture: 'test',
+    quantization: 'test',
+    folderName: 'tiny-cancel',
+    totalBytes: 6,
+    files: [{ name: 'tiny.gguf', size: 6, url: 'https://example.invalid/tiny.gguf' }],
+    primaryFile: 'tiny.gguf',
+    sourceUrl: 'https://example.invalid',
+    supportsMtp: false,
+    supportsVision: false,
+  }
+  const manager = new ModelDownloadManager({
+    fetch: async (_input, init) => new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('abc'))
+        init?.signal?.addEventListener('abort', () => {
+          controller.error(new DOMException('cancelled', 'AbortError'))
+        }, { once: true })
+      },
+    })),
+  }, [tiny])
+  try {
+    manager.start(tiny.id, root)
+    for (let attempt = 0; manager.status().downloadedBytes === 0 && attempt < 50; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    manager.cancel()
+    for (let attempt = 0; manager.status().stage === 'downloading' && attempt < 50; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    assert.equal(manager.status().stage, 'cancelled')
+    assert.equal(await readFile(join(root, 'tiny-cancel', 'tiny.gguf.part'), 'utf8'), 'abc')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })

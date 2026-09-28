@@ -13,6 +13,7 @@ export interface RecommendedModelFile {
 export interface RecommendedModel {
   id: string
   kind: RecommendedModelKind
+  family: string
   name: string
   architecture: string
   quantization: string
@@ -25,7 +26,7 @@ export interface RecommendedModel {
   supportsVision: boolean
 }
 
-export type ModelDownloadStage = 'idle' | 'downloading' | 'complete' | 'error'
+export type ModelDownloadStage = 'idle' | 'downloading' | 'complete' | 'cancelled' | 'error'
 
 export interface ModelDownloadProgress {
   stage: ModelDownloadStage
@@ -83,6 +84,7 @@ export const RECOMMENDED_MODELS: RecommendedModel[] = [
   model({
     id: 'qwen38-flash-ad-q4km',
     kind: 'main',
+    family: 'Qwen3.8 Flash Next',
     name: 'Qwen3.8-Flash-Next AD-4.27bpw Q4_K_M M64',
     architecture: 'Qwen3.8 Flash Next MoE',
     quantization: 'AD-4.27bpw Q4_K_M M64',
@@ -96,6 +98,7 @@ export const RECOMMENDED_MODELS: RecommendedModel[] = [
   model({
     id: 'qwen36-35b-apex-i-balanced',
     kind: 'main',
+    family: 'Qwen3.6 35B-A3B',
     name: 'Qwen3.6-35B-A3B APEX-I-Balanced',
     architecture: 'Qwen3.6 35B-A3B MoE',
     quantization: 'APEX-I-Balanced',
@@ -113,6 +116,7 @@ export const RECOMMENDED_MODELS: RecommendedModel[] = [
   model({
     id: 'qwen38-flash-vision-f16',
     kind: 'vision',
+    family: 'Qwen3.8 Flash Next',
     name: 'Qwen3.8 Flash Next vision projector F16',
     architecture: 'Qwen3.8 Flash Next vision projector',
     quantization: 'F16',
@@ -130,6 +134,7 @@ export const RECOMMENDED_MODELS: RecommendedModel[] = [
   model({
     id: 'qwen3-embedding-06b-q8',
     kind: 'embedding',
+    family: 'Qwen3 Embedding',
     name: 'Qwen3 Embedding 0.6B Q8_0',
     architecture: 'Qwen3 Embedding 0.6B',
     quantization: 'Q8_0',
@@ -147,6 +152,7 @@ export const RECOMMENDED_MODELS: RecommendedModel[] = [
   model({
     id: 'qwen38-flash-mtp-shared-q4km',
     kind: 'mtp',
+    family: 'Qwen3.8 Flash Next',
     name: 'Qwen3.8 Flash Next shared MTP head Q4_K_M',
     architecture: 'Qwen3.8 Flash Next MTP head',
     quantization: 'shared Q4_K_M',
@@ -218,6 +224,7 @@ export class ModelDownloadManager {
   private readonly models: RecommendedModel[]
   private current: ModelDownloadProgress = progress('idle', 0)
   private active: Promise<void> | undefined
+  private abort: AbortController | undefined
 
   constructor(
     dependencies: Partial<ModelDownloadDependencies> = {},
@@ -252,20 +259,32 @@ export class ModelDownloadManager {
       outputDirectory,
       fileCount: selected.files.length,
     }
-    const run = this.download(selected, root, outputDirectory).catch((error: unknown) => {
+    const abort = new AbortController()
+    this.abort = abort
+    const run = this.download(selected, root, outputDirectory, abort.signal).catch((error: unknown) => {
+      const cancelled = abort.signal.aborted
       this.current = {
         ...this.current,
-        stage: 'error',
-        error: error instanceof Error ? error.message : String(error),
+        stage: cancelled ? 'cancelled' : 'error',
+        ...(cancelled ? {} : { error: error instanceof Error ? error.message : String(error) }),
       }
     }).finally(() => {
       if (this.active === run) this.active = undefined
+      if (this.abort === abort) this.abort = undefined
     })
     this.active = run
     return this.status()
   }
 
-  private async download(selected: RecommendedModel, root: string, outputDirectory: string): Promise<void> {
+  cancel(): ModelDownloadProgress {
+    this.abort?.abort()
+    if (this.current.stage === 'downloading') {
+      this.current = { ...this.current, stage: 'cancelled' }
+    }
+    return this.status()
+  }
+
+  private async download(selected: RecommendedModel, root: string, outputDirectory: string, signal: AbortSignal): Promise<void> {
     await mkdir(outputDirectory, { recursive: true })
     let reusableBytes = 0
     for (const item of selected.files) {
@@ -298,14 +317,14 @@ export class ModelDownloadManager {
       let response = await this.dependencies.fetch(item.url, {
         headers: { 'user-agent': 'dsh-llm-moe4all', ...headers },
         redirect: 'follow',
-        signal: AbortSignal.timeout(24 * 60 * 60_000),
+        signal,
       })
       if (offset > 0 && response.status !== 206) {
         offset = 0
         response = await this.dependencies.fetch(item.url, {
           headers: { 'user-agent': 'dsh-llm-moe4all' },
           redirect: 'follow',
-          signal: AbortSignal.timeout(24 * 60 * 60_000),
+          signal,
         })
       }
       if (!response.ok || response.body === null) {

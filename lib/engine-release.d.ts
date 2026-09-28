@@ -26,7 +26,7 @@ export interface InstalledEngine {
     installedAt: string;
     sourceUrl: string;
 }
-export type EngineInstallStage = 'idle' | 'checking' | 'downloading' | 'verifying' | 'extracting' | 'finalizing' | 'complete' | 'error';
+export type EngineInstallStage = 'idle' | 'checking' | 'downloading' | 'verifying' | 'extracting' | 'finalizing' | 'complete' | 'cancelled' | 'error';
 export interface EngineInstallProgress {
     stage: EngineInstallStage;
     downloadedBytes: number;
@@ -39,6 +39,7 @@ export interface EngineReleaseStatus {
     supported: boolean;
     managed: boolean;
     installed?: InstalledEngine;
+    versions: InstalledEngine[];
     latest?: SelectedRelease;
     updateAvailable: boolean;
     install: EngineInstallProgress;
@@ -46,7 +47,7 @@ export interface EngineReleaseStatus {
 }
 export interface EngineReleaseDependencies {
     fetch(input: string | URL, init?: RequestInit): Promise<Response>;
-    expandArchive(archive: string, destination: string): Promise<void>;
+    expandArchive(archive: string, destination: string, signal?: AbortSignal): Promise<void>;
 }
 export declare function selectRelease(release: GitHubRelease): SelectedRelease;
 export declare function releaseFromTag(tag: string): SelectedRelease;
@@ -57,15 +58,19 @@ export declare class EngineReleaseManager {
     private latestPromise;
     private installPromise;
     private installProgress;
+    private installAbort;
     constructor(root?: string, dependencies?: Partial<EngineReleaseDependencies>);
     private get metadataPath();
     private setProgress;
     private progressSnapshot;
     latest(force?: boolean): Promise<SelectedRelease>;
     installed(): Promise<InstalledEngine | undefined>;
+    versions(): Promise<InstalledEngine[]>;
     status(currentExecutable?: string, force?: boolean): Promise<EngineReleaseStatus>;
     installLatest(): Promise<InstalledEngine>;
     installFromLocal(input: string): Promise<InstalledEngine>;
+    cancelInstall(): EngineInstallProgress;
+    remove(tag: string, currentExecutable?: string): Promise<void>;
     private runInstall;
     private downloadArchive;
     private extractArchive;

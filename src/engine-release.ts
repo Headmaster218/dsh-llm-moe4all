@@ -49,6 +49,7 @@ export type EngineInstallStage =
   | 'extracting'
   | 'finalizing'
   | 'complete'
+  | 'cancelled'
   | 'error'
 
 export interface EngineInstallProgress {
@@ -64,6 +65,7 @@ export interface EngineReleaseStatus {
   supported: boolean
   managed: boolean
   installed?: InstalledEngine
+  versions: InstalledEngine[]
   latest?: SelectedRelease
   updateAvailable: boolean
   install: EngineInstallProgress
@@ -72,7 +74,7 @@ export interface EngineReleaseStatus {
 
 export interface EngineReleaseDependencies {
   fetch(input: string | URL, init?: RequestInit): Promise<Response>
-  expandArchive(archive: string, destination: string): Promise<void>
+  expandArchive(archive: string, destination: string, signal?: AbortSignal): Promise<void>
 }
 
 function defaultRoot(): string {
@@ -98,7 +100,7 @@ async function responseBytes(response: Response, label: string): Promise<Uint8Ar
   return new Uint8Array(await response.arrayBuffer())
 }
 
-async function expandArchiveWithPowerShell(archive: string, destination: string): Promise<void> {
+async function expandArchiveWithPowerShell(archive: string, destination: string, signal?: AbortSignal): Promise<void> {
   if (process.platform !== 'win32') throw new Error('Automatic MoE4All installation currently supports Windows x86_64 only.')
   const script = [
     "$ErrorActionPreference = 'Stop'",
@@ -124,8 +126,15 @@ async function expandArchiveWithPowerShell(archive: string, destination: string)
     let stderr = ''
     child.stderr.setEncoding('utf8')
     child.stderr.on('data', (chunk: string) => { stderr += chunk })
+    const cancel = (): void => { child.kill() }
+    signal?.addEventListener('abort', cancel, { once: true })
     child.once('error', reject)
     child.once('close', (code) => {
+      signal?.removeEventListener('abort', cancel)
+      if (signal?.aborted === true) {
+        reject(new DOMException('The engine installation was cancelled.', 'AbortError'))
+        return
+      }
       if (code === 0) resolveRun()
       else reject(new Error(`Expand-Archive failed (${String(code)}): ${stderr.trim()}`))
     })
@@ -228,6 +237,17 @@ function localArchiveIdentity(path: string): { tag: string, name: string } {
   return { tag: `local-${safeTag(stem)}`, name: `MoE4All (${file})` }
 }
 
+function releaseIdentity(tag: string): { name: string, sourceUrl: string } {
+  const version = tag.replace(/^release-/iu, '').replace(/^v/iu, '')
+  if (/^\d+(?:\.\d+)+(?:[-+][a-zA-Z0-9.-]+)?$/u.test(version)) {
+    return {
+      name: `MoE4All v${version}`,
+      sourceUrl: `https://github.com/Headmaster218/MoE4All/releases/tag/release-${encodeURIComponent(version)}`,
+    }
+  }
+  return { name: `MoE4All ${tag}`, sourceUrl: '' }
+}
+
 export class EngineReleaseManager {
   readonly root: string
   private readonly dependencies: EngineReleaseDependencies
@@ -235,6 +255,7 @@ export class EngineReleaseManager {
   private latestPromise: Promise<SelectedRelease> | undefined
   private installPromise: Promise<InstalledEngine> | undefined
   private installProgress: EngineInstallProgress = progress('idle')
+  private installAbort: AbortController | undefined
 
   constructor(root = defaultRoot(), dependencies: Partial<EngineReleaseDependencies> = {}) {
     this.root = resolve(root)
@@ -310,17 +331,46 @@ export class EngineReleaseManager {
     }
   }
 
+  async versions(): Promise<InstalledEngine[]> {
+    const versions = new Map<string, InstalledEngine>()
+    const selected = await this.installed()
+    if (selected !== undefined) versions.set(resolve(selected.executable).toLowerCase(), selected)
+    const releasesRoot = join(this.root, 'releases')
+    try {
+      for (const entry of await readdir(releasesRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue
+        const directory = join(releasesRoot, entry.name)
+        const executable = await findExecutable(directory)
+        if (executable === undefined) continue
+        const key = resolve(executable).toLowerCase()
+        if (versions.has(key)) continue
+        const identity = releaseIdentity(entry.name)
+        const details = await stat(directory)
+        versions.set(key, {
+          tag: entry.name,
+          name: identity.name,
+          executable,
+          workingDirectory: dirname(executable),
+          installedAt: details.birthtime.toISOString(),
+          sourceUrl: identity.sourceUrl,
+        })
+      }
+    } catch {}
+    return [...versions.values()].sort((left, right) => right.installedAt.localeCompare(left.installedAt))
+  }
+
   async status(currentExecutable = '', force = false): Promise<EngineReleaseStatus> {
     if (process.platform !== 'win32' || process.arch !== 'x64') {
       return {
         supported: false,
         managed: false,
+        versions: [],
         updateAvailable: false,
         install: this.progressSnapshot(),
         message: 'Automatic MoE4All installation currently supports Windows x86_64 only.',
       }
     }
-    const [installed, latest] = await Promise.all([this.installed(), this.latest(force)])
+    const [installed, versions, latest] = await Promise.all([this.installed(), this.versions(), this.latest(force)])
     const managed = installed !== undefined && (
       currentExecutable.trim() === ''
       || resolve(currentExecutable) === resolve(installed.executable)
@@ -329,6 +379,7 @@ export class EngineReleaseManager {
       supported: true,
       managed,
       ...(installed === undefined ? {} : { installed }),
+      versions,
       latest,
       updateAvailable: managed && installed.tag !== latest.tag,
       install: this.progressSnapshot(),
@@ -336,7 +387,7 @@ export class EngineReleaseManager {
   }
 
   installLatest(): Promise<InstalledEngine> {
-    return this.runInstall(async () => {
+    return this.runInstall(async (signal) => {
       this.setProgress(progress('checking', 0, undefined, 'Checking the latest official release...'))
       const release = await this.latest(true)
       const releasesRoot = join(this.root, 'releases')
@@ -352,18 +403,18 @@ export class EngineReleaseManager {
       assertInside(this.root, staging)
       await mkdir(staging, { recursive: true })
       try {
-        const actual = await this.downloadArchive(release, archivePath)
+        const actual = await this.downloadArchive(release, archivePath, signal)
         this.setProgress(progress('verifying', this.installProgress.downloadedBytes, this.installProgress.totalBytes, 'Verifying SHA-256...'))
         if (release.checksum !== undefined) {
           const checksumResponse = await this.dependencies.fetch(release.checksum.browser_download_url, {
             headers: { 'user-agent': 'dsh-llm-moe4all' },
-            signal: AbortSignal.timeout(30_000),
+            signal,
           })
           const checksumText = new TextDecoder().decode(await responseBytes(checksumResponse, release.checksum.name))
           const expected = expectedChecksum(checksumText, release.archive.name)
           if (actual !== expected) throw new Error(`SHA-256 verification failed for ${release.archive.name}.`)
         }
-        const executable = await this.extractArchive(archivePath, target, staging)
+        const executable = await this.extractArchive(archivePath, target, staging, signal)
         return this.finishInstall(release.tag, release.name, executable, release.pageUrl)
       } finally {
         await rm(staging, { recursive: true, force: true })
@@ -372,7 +423,7 @@ export class EngineReleaseManager {
   }
 
   installFromLocal(input: string): Promise<InstalledEngine> {
-    return this.runInstall(async () => {
+    return this.runInstall(async (signal) => {
       if (input.trim() === '') throw new Error('Enter a ZIP, extracted directory, or infr.exe path.')
       const path = resolve(input.trim())
       this.setProgress(progress('checking', 0, undefined, 'Checking the local engine path...'))
@@ -410,7 +461,7 @@ export class EngineReleaseManager {
           const actual = await fileChecksum(path)
           if (actual !== expected) throw new Error(`SHA-256 verification failed for ${basename(path)}.`)
         }
-        const executable = await this.extractArchive(path, target, staging)
+        const executable = await this.extractArchive(path, target, staging, signal)
         return this.finishInstall(identity.tag, identity.name, executable, path)
       } finally {
         await rm(staging, { recursive: true, force: true })
@@ -418,26 +469,57 @@ export class EngineReleaseManager {
     })
   }
 
-  private runInstall(task: () => Promise<InstalledEngine>): Promise<InstalledEngine> {
+  cancelInstall(): EngineInstallProgress {
+    this.installAbort?.abort()
+    if (['checking', 'downloading', 'verifying', 'extracting', 'finalizing'].includes(this.installProgress.stage)) {
+      this.installProgress = { ...this.installProgress, stage: 'cancelled', message: 'Engine installation cancelled.' }
+    }
+    return this.progressSnapshot()
+  }
+
+  async remove(tag: string, currentExecutable = ''): Promise<void> {
+    const version = (await this.versions()).find(item => item.tag === tag)
+    if (version === undefined) throw new Error(`Unknown managed engine version: ${tag}`)
+    if (currentExecutable.trim() !== '' && resolve(currentExecutable) === resolve(version.executable)) {
+      throw new Error('Select another engine version before deleting the configured version.')
+    }
+    const releasesRoot = resolve(join(this.root, 'releases'))
+    const target = resolve(join(releasesRoot, safeTag(version.tag)))
+    assertInside(releasesRoot, target)
+    if (!resolve(version.executable).toLowerCase().startsWith(`${target.toLowerCase()}${sep}`)) {
+      throw new Error('Only plugin-managed engine versions can be deleted.')
+    }
+    await rm(target, { recursive: true, force: true })
+    const selected = await this.installed()
+    if (selected !== undefined && resolve(selected.executable) === resolve(version.executable)) {
+      await rm(this.metadataPath, { force: true })
+    }
+  }
+
+  private runInstall(task: (signal: AbortSignal) => Promise<InstalledEngine>): Promise<InstalledEngine> {
     if (this.installPromise !== undefined) return this.installPromise
-    const run = task().catch((error: unknown) => {
+    const abort = new AbortController()
+    this.installAbort = abort
+    const run = task(abort.signal).catch((error: unknown) => {
+      const cancelled = abort.signal.aborted
       this.installProgress = {
         ...this.installProgress,
-        stage: 'error',
-        error: error instanceof Error ? error.message : String(error),
+        stage: cancelled ? 'cancelled' : 'error',
+        ...(cancelled ? { message: 'Engine installation cancelled.' } : { error: error instanceof Error ? error.message : String(error) }),
       }
       throw error
     }).finally(() => {
       if (this.installPromise === run) this.installPromise = undefined
+      if (this.installAbort === abort) this.installAbort = undefined
     })
     this.installPromise = run
     return run
   }
 
-  private async downloadArchive(release: SelectedRelease, archivePath: string): Promise<string> {
+  private async downloadArchive(release: SelectedRelease, archivePath: string, signal: AbortSignal): Promise<string> {
     const response = await this.dependencies.fetch(release.archive.browser_download_url, {
       headers: { 'user-agent': 'dsh-llm-moe4all' },
-      signal: AbortSignal.timeout(10 * 60_000),
+      signal,
     })
     if (!response.ok) throw new Error(`${release.archive.name} returned HTTP ${response.status}`)
     const headerSize = Number(response.headers.get('content-length'))
@@ -469,13 +551,13 @@ export class EngineReleaseManager {
     return hash.digest('hex')
   }
 
-  private async extractArchive(archivePath: string, target: string, staging: string): Promise<string> {
+  private async extractArchive(archivePath: string, target: string, staging: string, signal: AbortSignal): Promise<string> {
     const extracted = join(staging, 'extracted')
     assertInside(this.root, target)
     assertInside(this.root, extracted)
     await mkdir(extracted, { recursive: true })
     this.setProgress(progress('extracting', this.installProgress.downloadedBytes, this.installProgress.totalBytes, 'Extracting MoE4All...'))
-    await this.dependencies.expandArchive(archivePath, extracted)
+    await this.dependencies.expandArchive(archivePath, extracted, signal)
     const stagedExecutable = await findExecutable(extracted)
     if (stagedExecutable === undefined) throw new Error('The MoE4All archive contains no infr.exe.')
     this.setProgress(progress('finalizing', this.installProgress.downloadedBytes, this.installProgress.totalBytes, 'Finalizing the installation...'))
