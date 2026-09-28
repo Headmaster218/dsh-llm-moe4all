@@ -1,5 +1,6 @@
 import type { EngineControlStatus } from '../host-routes.js'
 import type { EngineReleaseStatus, InstalledEngine } from '../engine-release.js'
+import type { LocalModelFiles, SetupModelPaths } from '../model-files.js'
 
 interface StartResponse {
   ok: boolean
@@ -54,4 +55,20 @@ export async function installLocalEngine(path: string): Promise<InstalledEngine>
     body: JSON.stringify({ path }),
   })
   return result.installed
+}
+
+export async function scanModelPath(path: string): Promise<LocalModelFiles> {
+  const result = await json<{ ok: boolean, files: LocalModelFiles }>('/api/moe4all/model-files', {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  })
+  return result.files
+}
+
+export async function validateModelPaths(paths: SetupModelPaths): Promise<SetupModelPaths> {
+  const result = await json<{ ok: boolean, paths: SetupModelPaths }>('/api/moe4all/validate-models', {
+    method: 'POST',
+    body: JSON.stringify({ paths }),
+  })
+  return result.paths
 }

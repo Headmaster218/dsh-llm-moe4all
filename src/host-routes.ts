@@ -4,6 +4,7 @@ import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import type { EngineController, EngineRuntimeStatus, EngineStartResult } from './engine-controller.js'
 import type { EngineReleaseManager, EngineReleaseStatus, InstalledEngine } from './engine-release.js'
 import type { DiscoveredModel } from './model-provider.js'
+import { discoverLocalModelFiles, type LocalModelFiles, type SetupModelPaths, validateSetupModelPaths } from './model-files.js'
 
 export const ENGINE_PATHS = {
   status: '/api/moe4all/status',
@@ -11,6 +12,8 @@ export const ENGINE_PATHS = {
   release: '/api/moe4all/release',
   install: '/api/moe4all/install',
   installLocal: '/api/moe4all/install-local',
+  modelFiles: '/api/moe4all/model-files',
+  validateModels: '/api/moe4all/validate-models',
 } as const
 
 export interface EngineControlStatus extends EngineRuntimeStatus {
@@ -177,11 +180,57 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
     }
   }
 
+  const handleModelFiles = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    if (!method(request, response, 'POST') || !fenced(request, response)) return
+    const body = await readJson(request)
+    if (body === undefined || typeof body.path !== 'string' || body.path.trim() === '') {
+      writeJson(response, 400, { ok: false, code: 'invalid-model-path', message: 'A model file or directory path is required.' })
+      return
+    }
+    try {
+      const files: LocalModelFiles = await discoverLocalModelFiles(body.path)
+      writeJson(response, 200, { ok: true, files })
+    } catch (error) {
+      writeJson(response, 400, { ok: false, code: 'model-scan-failed', message: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  const handleValidateModels = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    if (!method(request, response, 'POST') || !fenced(request, response)) return
+    const body = await readJson(request)
+    const paths = body?.paths
+    if (typeof paths !== 'object' || paths === null || Array.isArray(paths)) {
+      writeJson(response, 400, { ok: false, code: 'invalid-model-paths', message: 'Model paths are required.' })
+      return
+    }
+    const values = paths as Record<string, unknown>
+    if (typeof values.main !== 'string'
+      || (values.vision !== undefined && typeof values.vision !== 'string')
+      || (values.embedding !== undefined && typeof values.embedding !== 'string')
+      || (values.mtp !== undefined && typeof values.mtp !== 'string')) {
+      writeJson(response, 400, { ok: false, code: 'invalid-model-paths', message: 'Model paths must be strings.' })
+      return
+    }
+    try {
+      const normalized: SetupModelPaths = await validateSetupModelPaths({
+        main: values.main,
+        ...(typeof values.vision === 'string' ? { vision: values.vision } : {}),
+        ...(typeof values.embedding === 'string' ? { embedding: values.embedding } : {}),
+        ...(typeof values.mtp === 'string' ? { mtp: values.mtp } : {}),
+      })
+      writeJson(response, 200, { ok: true, paths: normalized })
+    } catch (error) {
+      writeJson(response, 400, { ok: false, code: 'model-validation-failed', message: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
   return [
     { kind: 'exact', path: ENGINE_PATHS.status, handler: handleStatus },
     { kind: 'exact', path: ENGINE_PATHS.start, handler: handleStart },
     { kind: 'exact', path: ENGINE_PATHS.release, handler: handleRelease },
     { kind: 'exact', path: ENGINE_PATHS.install, handler: handleInstall },
     { kind: 'exact', path: ENGINE_PATHS.installLocal, handler: handleInstallLocal },
+    { kind: 'exact', path: ENGINE_PATHS.modelFiles, handler: handleModelFiles },
+    { kind: 'exact', path: ENGINE_PATHS.validateModels, handler: handleValidateModels },
   ]
 }

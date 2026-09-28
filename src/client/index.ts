@@ -9,7 +9,7 @@ import { Moe4AllSettings, type Moe4AllSettingsInjected } from './Moe4AllSettings
 import { en, zh } from './locales.js'
 import { styles } from './styles.js'
 
-export const inject = ['slots', 'locale', 'settingsScope']
+export const inject = ['slots', 'locale', 'settingsScope', 'workspaces']
 const SETTINGS_NAMESPACE = 'moe4all-engine'
 
 function changedFields(current: Config, next: Config): Array<keyof Config> {
@@ -55,6 +55,7 @@ export function apply(ctx: ClientContext): void {
   }, () => createElement(EngineStartupOverlay, {
     scope,
     t: ctx.locale.bind('settings.moe4all'),
+    pickDirectory: () => ctx.workspaces.pickDirectory(),
   })))
 }
 

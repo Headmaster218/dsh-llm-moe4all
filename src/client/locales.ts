@@ -20,7 +20,14 @@ export type Moe4AllLocaleKey =
   | 'localDownloadPath' | 'localDownloadHint' | 'useLocalDownload' | 'retryDownload'
   | 'setupTitle' | 'setupBody' | 'modelPath' | 'parallelSlots' | 'automaticProfile'
   | 'conservativeProfile' | 'aggressiveProfile' | 'enableMtp' | 'saveSetupAndStart'
-  | 'invalidContext'
+  | 'invalidContext' | 'invalidMaxTokens' | 'modelsAndFeatures' | 'runtimeSettings'
+  | 'chooseDirectory' | 'scanDirectory' | 'selectDetectedModel' | 'downloadFlash' | 'download35b'
+  | 'enableVision' | 'downloadVision' | 'enableEmbedding' | 'downloadEmbedding'
+  | 'embeddingIdleTimeout' | 'enableAutoStart' | 'enableSessionCache' | 'sessionCacheHelp'
+  | 'sessionCachePath' | 'sessionCachePathHint' | 'sessionCacheMax' | 'sessionCacheIdle'
+  | 'sessionCacheTtl' | 'noVisionFound' | 'noEmbeddingFound' | 'visionPathRequired'
+  | 'embeddingPathRequired'
+  | 'downloadMtp' | 'noMtpFound' | 'mtpPathRequired'
 
 export const en: Record<Moe4AllLocaleKey, string> = {
   nav: 'MoE4All',
@@ -121,6 +128,34 @@ export const en: Record<Moe4AllLocaleKey, string> = {
   enableMtp: 'Enable Qwen3.8 MTP acceleration',
   saveSetupAndStart: 'Save and start',
   invalidContext: 'Enter a valid context length, such as 160k. One k equals 1024 tokens.',
+  invalidMaxTokens: 'Enter a valid maximum output, such as 100k. One k equals 1024 tokens.',
+  modelsAndFeatures: 'Models and features',
+  runtimeSettings: 'Runtime settings',
+  chooseDirectory: 'Choose directory',
+  scanDirectory: 'Scan folder',
+  selectDetectedModel: 'Select a detected model',
+  downloadFlash: 'Download Qwen3.8 Flash',
+  download35b: 'Download Qwen3.6 35B',
+  enableVision: 'Enable image understanding',
+  downloadVision: 'Download recommended vision model',
+  enableEmbedding: 'Enable the Embedding API',
+  downloadEmbedding: 'Download recommended embedding model',
+  embeddingIdleTimeout: 'Embedding idle release (seconds)',
+  enableAutoStart: 'Start MoE4All automatically with DSH after this setup',
+  enableSessionCache: 'Cache idle session KV on SSD',
+  sessionCacheHelp: 'MoE4All can write an idle conversation KV cache to SSD and restore it later, avoiding a full prompt prefill. Most inference engines do not provide this feature.',
+  sessionCachePath: 'KV cache directory',
+  sessionCachePathHint: 'A relative path is created under the MoE4All engine directory.',
+  sessionCacheMax: 'Total cache limit',
+  sessionCacheIdle: 'Spill after idle seconds',
+  sessionCacheTtl: 'Delete entries older than (hours; 0 disables)',
+  noVisionFound: 'No vision GGUF was found in the selected directory.',
+  noEmbeddingFound: 'No embedding GGUF was found in the selected directory.',
+  visionPathRequired: 'Choose a vision GGUF or disable image understanding.',
+  embeddingPathRequired: 'Choose an embedding GGUF or disable the Embedding API.',
+  downloadMtp: 'Download recommended MTP head',
+  noMtpFound: 'No MTP head GGUF was found in the selected directory.',
+  mtpPathRequired: 'Choose an MTP head GGUF or disable MTP acceleration.',
 }
 
 export const zh: Record<Moe4AllLocaleKey, string> = {
@@ -222,4 +257,32 @@ export const zh: Record<Moe4AllLocaleKey, string> = {
   enableMtp: '启用 Qwen3.8 MTP 加速',
   saveSetupAndStart: '保存并启动',
   invalidContext: '请输入有效的上下文长度，例如 160k；1k 等于 1024 token。',
+  invalidMaxTokens: '请输入有效的最长输出，例如 100k；1k 等于 1024 token。',
+  modelsAndFeatures: '模型与能力',
+  runtimeSettings: '运行参数',
+  chooseDirectory: '选择目录',
+  scanDirectory: '扫描同目录',
+  selectDetectedModel: '选择检测到的模型',
+  downloadFlash: '下载 Qwen3.8 Flash',
+  download35b: '下载 Qwen3.6 35B',
+  enableVision: '启用图片理解',
+  downloadVision: '下载推荐视觉模型',
+  enableEmbedding: '启用 Embedding API',
+  downloadEmbedding: '下载推荐 Embedding 模型',
+  embeddingIdleTimeout: 'Embedding 空闲释放（秒）',
+  enableAutoStart: '本次设置后，随 DSH 自动启动 MoE4All',
+  enableSessionCache: '将闲置会话 KV 缓存到 SSD',
+  sessionCacheHelp: 'MoE4All 可将闲置对话的 KV 缓存写入 SSD，并在再次使用时恢复，避免从头 Prefill。大多数推理引擎没有这项能力。',
+  sessionCachePath: 'KV 缓存目录',
+  sessionCachePathHint: '相对路径会在 MoE4All 引擎目录下创建。',
+  sessionCacheMax: '缓存总上限',
+  sessionCacheIdle: '闲置多少秒后写入 SSD',
+  sessionCacheTtl: '清理早于多少小时的缓存（0 为不按时间清理）',
+  noVisionFound: '所选目录中没有找到视觉 GGUF。',
+  noEmbeddingFound: '所选目录中没有找到 Embedding GGUF。',
+  visionPathRequired: '请选择视觉 GGUF，或关闭图片理解。',
+  embeddingPathRequired: '请选择 Embedding GGUF，或关闭 Embedding API。',
+  downloadMtp: '下载推荐 MTP 头',
+  noMtpFound: '所选目录中没有找到 MTP 头 GGUF。',
+  mtpPathRequired: '请选择 MTP 头 GGUF，或关闭 MTP 加速。',
 }

@@ -9,6 +9,8 @@ export declare const ENGINE_PATHS: {
     readonly release: "/api/moe4all/release";
     readonly install: "/api/moe4all/install";
     readonly installLocal: "/api/moe4all/install-local";
+    readonly modelFiles: "/api/moe4all/model-files";
+    readonly validateModels: "/api/moe4all/validate-models";
 };
 export interface EngineControlStatus extends EngineRuntimeStatus {
     models: DiscoveredModel[];
