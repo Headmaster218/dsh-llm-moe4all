@@ -1,790 +1,869 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-
+import {
+  Activity,
+  ArrowDownToLine,
+  ArrowRight,
+  Check,
+  ChevronRight,
+  CircleAlert,
+  Copy,
+  Cpu,
+  FilePlus2,
+  FolderOpen,
+  Layers3,
+  Link,
+  Monitor,
+  Package,
+  Play,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Settings2,
+  Square,
+  Terminal,
+  X,
+} from 'lucide-react'
 import type { Config } from '../index.js'
-import type { EngineReleaseStatus, InstalledEngine } from '../engine-release.js'
-import type { EngineControlStatus } from '../host-routes.js'
-import type { LocalModelEntry, LocalModelLibrary, ModelFileKind } from '../model-files.js'
-import type { ModelDownloadProgress, RecommendedModel } from '../model-download.js'
-import {
-  cancelEngineInstall, cancelModelDownload, deleteEngineVersion, fetchEngineStatus,
-  fetchModelCatalog, fetchModelDownload, fetchReleaseStatus, installLatestEngine,
-  pickModelFile, scanModelLibrary, startEngine, startModelDownload, validateModelPaths,
-} from './engine-api.js'
-import {
-  buildEngineArguments, parseEngineArguments, type ParsedEngineArguments,
-} from './engine-setup.js'
+import { endpointFromConfig } from '../connection.js'
+import type { InstalledEngine } from '../engine-release.js'
+import type { ModelFileKind } from '../model-files.js'
 import type { Moe4AllLocaleKey } from './locales.js'
-import { formatTokenValue, parseTokenValue } from './token-value.js'
-
-type ResolvedConfig = { [K in keyof Config]-?: Exclude<Config[K], undefined> }
-type Translate = (key: Moe4AllLocaleKey) => string
+import { useWorkspace, isInstalling } from './use-workspace.js'
+import { fileName, formatBytes, samePath } from './workspace-model.js'
+import { AdvancedOptions } from './AdvancedOptions.js'
+import { EngineVersionsView } from './EngineVersionsView.js'
+import { ModelLibraryView, roleIcon, roleLabel } from './ModelLibraryView.js'
+import { Button, Dialog, Field, IconButton, Toggle, Transfer } from './workspace-ui.js'
 
 export interface Moe4AllSettingsInjected {
-  hooks: {
-    moe4AllSettings: SettingsScope<Config>
-  }
+  hooks: { moe4AllSettings: SettingsScope<Config> }
   pickDirectory(): Promise<string | null>
   save(next: Config): Promise<void>
 }
-
-export type Moe4AllSettingsProps =
-  PropsRuntime<'settings.section'>
-  & PropsLocale<'settings.moe4all'>
-  & InjectFace<Moe4AllSettingsInjected>
-
-interface FieldProps {
-  label: string
-  wide?: boolean
-  hint?: string
-  children: ReactNode
-}
-
-interface CheckProps {
-  checked: boolean
-  disabled: boolean
-  label: string
-  onChange(value: boolean): void
-}
-
-interface LibraryRow {
-  key: string
-  family: string
-  kind: ModelFileKind
-  name: string
-  quantization: string
-  sizeBytes: number
-  fileCount: number
-  path?: string
-  recommendation?: RecommendedModel
-}
-
-function same(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right)
-}
-
-function resolved(value: Config): ResolvedConfig {
-  const mode = value.mode === 'managed' ? 'prompt' : value.mode
-  return { ...value, mode } as ResolvedConfig
-}
-
-function Field({ label, wide = false, hint, children }: FieldProps): ReactNode {
-  return (
-    <label className={`m4a-settings__field${wide ? ' m4a-settings__field--wide' : ''}`}>
-      <span className="m4a-settings__label">{label}</span>
-      {children}
-      {hint === undefined ? null : <span className="m4a-settings__hint">{hint}</span>}
-    </label>
-  )
-}
-
-function Check({ checked, disabled, label, onChange }: CheckProps): ReactNode {
-  return (
-    <label className="m4a-settings__check">
-      <input type="checkbox" checked={checked} disabled={disabled} onChange={event => { onChange(event.target.checked) }} />
-      <span>{label}</span>
-    </label>
-  )
-}
-
-function TokenInput({ value, disabled, onChange }: {
-  value: number
-  disabled: boolean
-  onChange(value: number): void
-}): ReactNode {
-  const [text, setText] = useState(formatTokenValue(value))
-  const valid = parseTokenValue(text) !== undefined
-  useEffect(() => { setText(formatTokenValue(value)) }, [value])
-  return (
-    <input
-      className={`m4a-settings__input${valid || text === '' ? '' : ' m4a-settings__input--invalid'}`}
-      type="text"
-      inputMode="decimal"
-      value={text}
-      disabled={disabled}
-      placeholder="160k"
-      onChange={event => {
-        const next = event.target.value
-        setText(next)
-        const parsed = parseTokenValue(next)
-        if (parsed !== undefined) onChange(parsed)
-      }}
-      onBlur={() => {
-        const parsed = parseTokenValue(text)
-        setText(parsed === undefined ? formatTokenValue(value) : text.trim().toLowerCase())
-      }}
-    />
-  )
-}
-
-function statusClass(status: EngineControlStatus | null): string {
-  if (status?.ready === true) return 'ready'
-  if (status?.phase === 'starting' || status?.phase === 'checking') return 'busy'
-  if (status?.phase === 'resource-warning') return 'warning'
-  if (status?.phase === 'error' || status?.phase === 'duplicate-process') return 'error'
-  return 'offline'
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KiB`
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`
-  return `${(bytes / 1024 ** 3).toFixed(2)} GiB`
-}
-
-function fileName(path: string): string {
-  return path.split(/[\\/]/u).at(-1) ?? path
-}
-
-function samePath(left: string, right: string): boolean {
-  return left.replaceAll('/', '\\').toLowerCase() === right.replaceAll('/', '\\').toLowerCase()
-}
-
-function activeEngineInstall(release: EngineReleaseStatus | null): boolean {
-  return release !== null && ['checking', 'downloading', 'verifying', 'extracting', 'finalizing'].includes(release.install.stage)
-}
-
-function activeModelDownload(download: ModelDownloadProgress): boolean {
-  return download.stage === 'downloading'
-}
-
-function recommendationFor(model: LocalModelEntry, recommendations: RecommendedModel[]): RecommendedModel | undefined {
-  return recommendations.find(item => (
-    item.kind === model.kind
-    && item.family === model.family
-    && (item.files.some(file => file.name.toLowerCase() === fileName(model.path).toLowerCase()) || item.totalBytes === model.sizeBytes)
-  ))
-}
-
-function libraryRows(models: LocalModelEntry[], recommendations: RecommendedModel[]): LibraryRow[] {
-  const installedRecommendations = new Set<string>()
-  const rows = models.map((model): LibraryRow => {
-    const recommendation = recommendationFor(model, recommendations)
-    if (recommendation !== undefined) installedRecommendations.add(recommendation.id)
-    return {
-      key: `local:${model.id}`,
-      family: model.family,
-      kind: model.kind,
-      name: recommendation?.name ?? model.name,
-      quantization: model.quantization,
-      sizeBytes: model.sizeBytes,
-      fileCount: model.fileCount,
-      path: model.path,
-      ...(recommendation === undefined ? {} : { recommendation }),
-    }
-  })
-  for (const recommendation of recommendations) {
-    if (installedRecommendations.has(recommendation.id)) continue
-    rows.push({
-      key: `recommended:${recommendation.id}`,
-      family: recommendation.family,
-      kind: recommendation.kind,
-      name: recommendation.name,
-      quantization: recommendation.quantization,
-      sizeBytes: recommendation.totalBytes,
-      fileCount: recommendation.files.length,
-      recommendation,
-    })
-  }
-  const rank: Record<ModelFileKind, number> = { main: 0, vision: 1, mtp: 2, embedding: 3 }
-  const familyRank = new Map<string, number>()
-  for (const recommendation of recommendations) {
-    if (!familyRank.has(recommendation.family)) familyRank.set(recommendation.family, familyRank.size)
-  }
-  return rows.sort((left, right) => (
-    (familyRank.get(left.family) ?? Number.MAX_SAFE_INTEGER) - (familyRank.get(right.family) ?? Number.MAX_SAFE_INTEGER)
-    || left.family.localeCompare(right.family, undefined, { numeric: true, sensitivity: 'base' })
-    || rank[left.kind] - rank[right.kind]
-    || left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' })
-  ))
-}
-
-function pathForKind(setup: ParsedEngineArguments, kind: ModelFileKind): string {
-  if (kind === 'main') return setup.model
-  if (kind === 'vision') return setup.visionModel
-  if (kind === 'embedding') return setup.embeddingModel
-  return setup.mtpModel
-}
-
-function ModelSelection({ kind, path, disabled, t, onChoose, onClear }: {
-  kind: ModelFileKind
-  path: string
-  disabled: boolean
-  t: Translate
-  onChoose(): void
-  onClear(): void
-}): ReactNode {
-  const label = kind === 'main' ? t('mainModel')
-    : kind === 'vision' ? t('visionModel')
-      : kind === 'embedding' ? t('embeddingModel') : t('mtpModel')
-  return (
-    <div className="m4a-current-model">
-      <div className="m4a-current-model__body">
-        <span className="m4a-settings__label">{label}</span>
-        <strong>{path === '' ? t('notSelected') : fileName(path)}</strong>
-        {path === '' ? null : <code title={path}>{path}</code>}
-      </div>
-      <div className="m4a-current-model__actions">
-        <button type="button" className="m4a-settings__button" disabled={disabled} onClick={onChoose}>{t('chooseFile')}</button>
-        {kind === 'main' || path === '' ? null : (
-          <button type="button" className="m4a-settings__button" disabled={disabled} onClick={onClear}>{t('removeSelection')}</button>
-        )}
-      </div>
-    </div>
-  )
+export type Moe4AllSettingsProps = PropsRuntime<'settings.section'> &
+  PropsLocale<'settings.moe4all'> &
+  InjectFace<Moe4AllSettingsInjected>
+type Tab = 'run' | 'models' | 'engines' | 'diagnostics'
+type Confirmation = { kind: 'stop' | 'restart' | 'discard' } | { kind: 'delete'; version: InstalledEngine }
+const phases: Record<string, Moe4AllLocaleKey> = {
+  ready: 'readyStatus',
+  checking: 'checkingStatus',
+  starting: 'startingStatus',
+  offline: 'stoppedStatus',
+  error: 'failedStatus',
+  'missing-executable': 'notConfigured',
+  'missing-arguments': 'notConfigured',
+  'resource-warning': 'busyStatus',
+  'duplicate-process': 'duplicateStatus',
 }
 
 export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
-  const { t, useMoe4AllSettings, save, pickDirectory } = props
-  const snapshot = useMoe4AllSettings(value => value)
-  const initial = snapshot.value === undefined ? null : resolved(snapshot.value)
-  const [draft, setDraft] = useState<ResolvedConfig | null>(initial)
-  const [setup, setSetup] = useState<ParsedEngineArguments>(() => parseEngineArguments(initial?.arguments ?? []))
-  const [saving, setSaving] = useState(false)
-  const [acting, setActing] = useState(false)
-  const [status, setStatus] = useState<EngineControlStatus | null>(null)
-  const [release, setRelease] = useState<EngineReleaseStatus | null>(null)
-  const [recommendations, setRecommendations] = useState<RecommendedModel[]>([])
-  const [library, setLibrary] = useState<LocalModelLibrary>({ directory: '', models: [] })
-  const [libraryLoading, setLibraryLoading] = useState(false)
-  const [modelDownload, setModelDownload] = useState<ModelDownloadProgress>({ stage: 'idle', downloadedBytes: 0 })
-  const [nativeFilePicker, setNativeFilePicker] = useState(false)
-  const [engineInstalling, setEngineInstalling] = useState(false)
-  const [modelDownloading, setModelDownloading] = useState(false)
-  const [error, setError] = useState('')
-  const [confirmBusy, setConfirmBusy] = useState(false)
-
+  const w = useWorkspace(props)
+  const { t } = props
+  const root = useRef<HTMLDivElement>(null)
+  const [tab, setTab] = useState<Tab>('run')
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
+  const [importKind, setImportKind] = useState<ModelFileKind | null>(null)
+  const [importText, setImportText] = useState('')
+  const [advanced, setAdvanced] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [clock, setClock] = useState(Date.now())
   useEffect(() => {
-    if (!saving && snapshot.value !== undefined) {
-      const next = resolved(snapshot.value)
-      setDraft(next)
-      setSetup(parseEngineArguments(next.arguments))
+    const dialog = root.current?.closest('[role="dialog"]')
+    let options = root.current?.parentElement
+    while (options && options !== dialog && getComputedStyle(options).overflowY !== 'auto')
+      options = options.parentElement
+    const overlay = dialog?.parentElement
+    dialog?.classList.add('m4a-host-dialog')
+    options?.classList.add('m4a-host-options')
+    // Older DSH shells mount settings inside a fading sidebar stacking context.
+    if (overlay && 'showPopover' in overlay) {
+      overlay.classList.add('m4a-host-overlay')
+      overlay.setAttribute('popover', 'manual')
+      overlay.showPopover()
     }
-  }, [saving, snapshot.revision, snapshot.value])
-
-  useEffect(() => {
-    let disposed = false
-    const poll = async (): Promise<void> => {
-      try {
-        const next = await fetchEngineStatus()
-        if (!disposed) setStatus(next)
-      } catch (cause) {
-        if (!disposed) setError(cause instanceof Error ? cause.message : String(cause))
+    document.documentElement.dataset.moe4allSettings = 'open'
+    window.dispatchEvent(new Event('moe4all-settings-visibility'))
+    return () => {
+      dialog?.classList.remove('m4a-host-dialog')
+      options?.classList.remove('m4a-host-options')
+      if (overlay?.hasAttribute('popover')) {
+        overlay.hidePopover()
+        overlay.removeAttribute('popover')
+        overlay.classList.remove('m4a-host-overlay')
       }
+      delete document.documentElement.dataset.moe4allSettings
+      window.dispatchEvent(new Event('moe4all-settings-visibility'))
     }
-    void poll()
-    const timer = window.setInterval(() => { void poll() }, 2000)
-    return () => { disposed = true; window.clearInterval(timer) }
+  }, [w.editor === null])
+  useEffect(() => {
+    const timer = setInterval(() => setClock(Date.now()), 1000)
+    return () => clearInterval(timer)
   }, [])
-
-  useEffect(() => {
-    let disposed = false
-    void fetchReleaseStatus().then(next => { if (!disposed) setRelease(next) }).catch(cause => {
-      if (!disposed) setError(cause instanceof Error ? cause.message : String(cause))
-    })
-    void fetchModelCatalog().then(next => {
-      if (disposed) return
-      setRecommendations(next.models)
-      setModelDownload(next.download)
-      setNativeFilePicker(next.capabilities.nativeFilePicker)
-    }).catch(cause => {
-      if (!disposed) setError(cause instanceof Error ? cause.message : String(cause))
-    })
-    return () => { disposed = true }
-  }, [])
-
-  const selectedPaths = useMemo(() => [setup.model, setup.visionModel, setup.embeddingModel, setup.mtpModel].filter(Boolean), [setup])
-  const refreshLibrary = useCallback(async (directory = draft?.modelDirectory ?? '', paths = selectedPaths): Promise<void> => {
-    setLibraryLoading(true)
-    try {
-      setLibrary(await scanModelLibrary(directory, paths))
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-    } finally {
-      setLibraryLoading(false)
-    }
-  }, [draft?.modelDirectory, selectedPaths])
-
-  useEffect(() => { void refreshLibrary() }, [snapshot.revision])
-
-  const current = snapshot.value === undefined ? null : resolved(snapshot.value)
-  const currentSetup = current === null ? null : parseEngineArguments(current.arguments)
-  const dirty = draft !== null && current !== null && (!same(draft, current) || !same(setup, currentSetup))
-  const rows = useMemo(() => libraryRows(library.models, recommendations), [library.models, recommendations])
-  const groupedRows = useMemo(() => {
-    const result = new Map<string, LibraryRow[]>()
-    for (const row of rows) result.set(row.family, [...(result.get(row.family) ?? []), row])
-    return [...result.entries()]
-  }, [rows])
-
-  if (snapshot.status === 'loading' || draft === null) return <p className="m4a-settings__message">{t('loading')}</p>
-  if (snapshot.status === 'unavailable') return <p className="m4a-settings__message">{t('unavailable')}</p>
-
-  const disabled = saving || acting || !snapshot.writable
-  const setField = <K extends keyof ResolvedConfig>(field: K, value: ResolvedConfig[K]): void => {
-    setDraft(previous => previous === null ? previous : { ...previous, [field]: value })
+  if (!w.editor)
+    return (
+      <div className="m4a-workspace" ref={root}>
+        <div className="m4a-loading">
+          <RefreshCw size={20} className="m4a-spin" />
+          {t(w.snapshot.status === 'unavailable' ? 'unavailable' : 'loading')}
+        </div>
+      </div>
+    )
+  const e = w.editor
+  const local = e.config.mode !== 'connect'
+  const owned = w.status?.owned === true
+  const ready = w.status?.ready === true
+  const starting = w.status?.phase === 'starting' || w.working === 'start'
+  const engineSelected = !!e.config.executable
+  const modelSelected = !!e.setup.model
+  const selectedVersion = w.release?.versions.find((item) =>
+    samePath(item.executable, e.config.executable ?? ''),
+  )
+  const currentModel = w.library.models.find((item) => samePath(item.path, e.setup.model))
+  const showSteps = local && (!engineSelected || !modelSelected)
+  const needsRestart = owned && (w.dirty || w.status?.pendingChanges || (!ready && !starting))
+  const endpoint = endpointFromConfig(e.config)
+  const output = (w.status?.startupLines ?? []).join('\n')
+  const engineTask = w.release?.install
+  const modelTask = w.download
+  const currentDownload = w.catalog.find((item) => item.id === modelTask.modelId)
+  const downloadTasks =
+    (engineTask && engineTask.stage !== 'idle' && engineTask.stage !== 'complete') ||
+    (modelTask.stage !== 'idle' && modelTask.stage !== 'complete')
+  const installLabels: Record<string, Moe4AllLocaleKey> = {
+    checking: 'progressChecking',
+    downloading: 'downloadRunning',
+    verifying: 'progressVerifying',
+    extracting: 'progressExtracting',
+    finalizing: 'progressFinalizing',
+    error: 'failedDownload',
+    cancelled: 'pausedStatus',
+    complete: 'downloadedStatus',
   }
-  const numberField = (field: keyof ResolvedConfig, value: string): void => {
-    const parsed = Number(value)
-    if (Number.isFinite(parsed)) setField(field, parsed as never)
-  }
-  const setSetupField = <K extends keyof ParsedEngineArguments>(field: K, value: ParsedEngineArguments[K]): void => {
-    setSetup(previous => ({ ...previous, [field]: value }))
-  }
-
-  const persist = async (next: ResolvedConfig): Promise<void> => {
-    setSaving(true)
-    setError('')
-    try {
-      await save(next)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const composed = async (): Promise<ResolvedConfig> => {
-    if (draft.mode === 'connect') return draft
-    const paths = await validateModelPaths({
-      main: setup.model,
-      ...(setup.visionModel === '' ? {} : { vision: setup.visionModel }),
-      ...(setup.embeddingModel === '' ? {} : { embedding: setup.embeddingModel }),
-      ...(setup.mtp && setup.mtpModel !== '' ? { mtp: setup.mtpModel } : {}),
-    })
-    const arguments_ = buildEngineArguments({
-      model: paths.main,
-      ...(paths.vision === undefined ? {} : { visionModel: paths.vision }),
-      ...(paths.embedding === undefined ? {} : { embeddingModel: paths.embedding, embeddingIdleTimeout: setup.embeddingIdleTimeout }),
-      ...(paths.mtp === undefined ? {} : { mtpModel: paths.mtp }),
-      host: draft.host,
-      port: draft.port,
-      contextWindow: draft.contextWindow,
-      maxTokens: draft.maxTokens,
-      parallel: setup.parallel,
-      profile: setup.profile,
-      mtp: setup.mtp,
-      ...(setup.sessionCacheEnabled ? { sessionCache: setup.sessionCache } : {}),
-    })
-    return { ...draft, arguments: arguments_, vision: paths.vision !== undefined }
-  }
-
-  const submit = async (): Promise<void> => {
-    setError('')
-    try {
-      const next = await composed()
-      setDraft(next)
-      await persist(next)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-    }
-  }
-
-  const launch = async (force = false): Promise<void> => {
-    setActing(true)
-    setError('')
-    try {
-      if (dirty) {
-        const next = await composed()
-        setDraft(next)
-        await persist(next)
-        await new Promise(resolve => window.setTimeout(resolve, 700))
-      }
-      const result = await startEngine(force)
-      setStatus(result.status)
-      setConfirmBusy(result.status.phase === 'resource-warning')
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-    } finally {
-      setActing(false)
-    }
-  }
-
-  const monitorEngineInstall = async (): Promise<void> => {
-    while (true) {
-      await new Promise(resolve => window.setTimeout(resolve, 500))
-      const next = await fetchReleaseStatus()
-      setRelease(next)
-      if (activeEngineInstall(next)) continue
-      if (next.install.stage === 'error') throw new Error(next.install.error ?? t('downloadFailed'))
-      if (next.install.stage === 'cancelled') return
-      if (next.install.stage === 'complete' && next.installed !== undefined) {
-        const updated = { ...draft, executable: next.installed.executable, workingDirectory: next.installed.workingDirectory }
-        setDraft(updated)
-        await persist(updated)
-      }
+  const primaryLabel = needsRestart
+    ? 'restartEngineAction'
+    : !local
+      ? w.dirty
+        ? 'saveConnect'
+        : 'testConnection'
+      : !engineSelected
+        ? 'stepEngine'
+        : !modelSelected
+          ? 'browseLibrary'
+          : ready
+            ? 'readyStatus'
+            : w.dirty
+              ? 'saveStart'
+              : 'startNow'
+  const primaryAction = () => {
+    if (needsRestart) {
+      setConfirmation({ kind: 'restart' })
       return
     }
-  }
-
-  const installEngine = async (): Promise<void> => {
-    setEngineInstalling(true)
-    setError('')
-    try {
-      await installLatestEngine()
-      await monitorEngineInstall()
-      setRelease(await fetchReleaseStatus(true))
-      setStatus(await fetchEngineStatus())
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-      try { setRelease(await fetchReleaseStatus()) } catch {}
-    } finally {
-      setEngineInstalling(false)
-    }
-  }
-
-  const stopEngineInstall = async (): Promise<void> => {
-    try {
-      const install = await cancelEngineInstall()
-      setRelease(previous => previous === null ? previous : { ...previous, install })
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-    }
-  }
-
-  const removeEngine = async (): Promise<void> => {
-    const selected = release?.versions.find(item => samePath(item.executable, draft.executable))
-    if (selected === undefined) return
-    if (!window.confirm(t('confirmDeleteEngine'))) return
-    setActing(true)
-    setError('')
-    try {
-      await deleteEngineVersion(selected.tag)
-      const nextRelease = await fetchReleaseStatus(true)
-      setRelease(nextRelease)
-      const persistedExecutable = current?.executable ?? ''
-      const fallback = nextRelease.versions.find(item => samePath(item.executable, persistedExecutable))
-        ?? nextRelease.versions[0]
-      setDraft(previous => previous === null ? previous : {
-        ...previous,
-        executable: fallback?.executable ?? '',
-        workingDirectory: fallback?.workingDirectory ?? '',
-      })
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-    } finally {
-      setActing(false)
-    }
-  }
-
-  const selectEngine = (executable: string): void => {
-    const version = release?.versions.find(item => samePath(item.executable, executable))
-    setDraft(previous => previous === null ? previous : {
-      ...previous,
-      executable,
-      workingDirectory: version?.workingDirectory ?? previous.workingDirectory,
-    })
-  }
-
-  const chooseLibraryDirectory = async (): Promise<void> => {
-    const directory = await pickDirectory()
-    if (directory === null) return
-    setField('modelDirectory', directory)
-    await refreshLibrary(directory)
-  }
-
-  const chooseModelFile = async (kind: ModelFileKind): Promise<void> => {
-    try {
-      const path = await pickModelFile()
-      if (path === undefined) return
-      if (kind === 'main') setSetupField('model', path)
-      else if (kind === 'vision') setSetupField('visionModel', path)
-      else if (kind === 'embedding') setSetupField('embeddingModel', path)
-      else setSetup(previous => ({ ...previous, mtpModel: path, mtp: true }))
-      await refreshLibrary(draft.modelDirectory, [...selectedPaths, path])
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-    }
-  }
-
-  const useModel = (row: LibraryRow): void => {
-    if (row.path === undefined) return
-    if (row.kind === 'main') {
-      const related = rows.filter(item => item.path !== undefined && item.family === row.family)
-      setSetup(previous => ({
-        ...previous,
-        model: row.path!,
-        visionModel: previous.visionModel || related.find(item => item.kind === 'vision')?.path || '',
-        mtpModel: previous.mtpModel || related.find(item => item.kind === 'mtp')?.path || '',
-      }))
-    } else if (row.kind === 'vision') setSetupField('visionModel', row.path)
-    else if (row.kind === 'embedding') setSetupField('embeddingModel', row.path)
-    else setSetup(previous => ({ ...previous, mtpModel: row.path!, mtp: true }))
-  }
-
-  const monitorModelDownload = async (): Promise<void> => {
-    while (true) {
-      await new Promise(resolve => window.setTimeout(resolve, 500))
-      const next = await fetchModelDownload()
-      setModelDownload(next)
-      if (activeModelDownload(next)) continue
-      if (next.stage === 'error') throw new Error(next.error ?? t('downloadFailed'))
-      if (next.stage === 'complete') await refreshLibrary()
+    if (!local) {
+      void w.launch()
       return
     }
-  }
-
-  const downloadModel = async (model: RecommendedModel): Promise<void> => {
-    if (draft.modelDirectory.trim() === '') {
-      setError(t('modelDirectoryRequired'))
+    if (!engineSelected) {
+      setTab('engines')
       return
     }
-    setModelDownloading(true)
-    setError('')
-    try {
-      setModelDownload(await startModelDownload(model.id, draft.modelDirectory))
-      await monitorModelDownload()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-    } finally {
-      setModelDownloading(false)
+    if (!modelSelected) {
+      setTab('models')
+      return
     }
+    void w.launch()
   }
-
-  const stopModelDownload = async (): Promise<void> => {
-    try {
-      setModelDownload(await cancelModelDownload())
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-    }
-  }
-
-  const endpoint = draft.endpoint.trim() !== ''
-    ? draft.endpoint.trim()
-    : `${draft.protocol}://${draft.host}:${draft.port}${draft.apiBasePath.startsWith('/') ? draft.apiBasePath : `/${draft.apiBasePath}`}`
-  const selectedVersion = release?.versions.find(item => samePath(item.executable, draft.executable))
-  const releaseAction = release?.install.stage === 'error' || release?.install.stage === 'cancelled'
-    ? t('retryDownload')
-    : release?.updateAvailable === true ? t('updateNow') : t('installLatest')
-  const downloadRecommendation = recommendations.find(item => item.id === modelDownload.modelId)
-
-  return (
-    <div className="m4a-settings">
-      <header className="m4a-settings__header">
-        <h2 className="m4a-settings__title">{t('title')}</h2>
-        <div className="m4a-settings__status">
-          <span className={`m4a-settings__dot m4a-settings__dot--${statusClass(status)}`} />
-          <span>{status?.message ?? t('checkingEngine')}</span>
-          <code className="m4a-settings__endpoint" title={endpoint}>{endpoint}</code>
+  const attachPath = (kind: ModelFileKind) =>
+    kind === 'main'
+      ? e.setup.model
+      : kind === 'vision'
+        ? e.setup.visionModel
+        : kind === 'mtp'
+          ? e.setup.mtpModel
+          : e.setup.embeddingModel
+  const tokenFields = (
+    <div className="m4a-field-grid">
+      <Field label={t('contextWindow')} help={t('tokenUnitHint')}>
+        <input
+          inputMode="decimal"
+          value={e.context}
+          placeholder="160k"
+          onChange={(event) => w.edit((previous) => ({ ...previous, context: event.target.value }))}
+        />
+      </Field>
+      <Field label={t('maxTokens')} help={t('tokenUnitHint')}>
+        <input
+          inputMode="decimal"
+          value={e.maxTokens}
+          placeholder="100k"
+          onChange={(event) => w.edit((previous) => ({ ...previous, maxTokens: event.target.value }))}
+        />
+      </Field>
+    </div>
+  )
+  const runConfig = (
+    <div className="m4a-run-config">
+      <div className="m4a-section-heading">
+        <h3>{t('selectedModelTitle')}</h3>
+        <Button kind="ghost" icon={Plus} onClick={() => setImportKind('main')}>
+          {t('importModel')}
+        </Button>
+      </div>
+      <div className={`m4a-active-model ${!modelSelected ? 'is-empty' : ''}`}>
+        <div className="m4a-active-symbol">
+          <Layers3 size={24} />
         </div>
-        {error === '' ? null : <p className="m4a-settings__error">{error}</p>}
-      </header>
-
-      <section className="m4a-settings__engine-bar">
-        <div className="m4a-settings__engine-version">
-          <span className="m4a-settings__label">{t('engineVersion')}</span>
-          <select className="m4a-settings__select" value={draft.executable} disabled={disabled || engineInstalling} onChange={event => { selectEngine(event.target.value) }}>
-            <option value="">{t('engineNotInstalled')}</option>
-            {(release?.versions ?? []).map(version => <option key={`${version.tag}:${version.executable}`} value={version.executable}>{version.name}</option>)}
-          </select>
+        <div>
+          {modelSelected ? (
+            <>
+              <strong>{currentModel?.family ?? fileName(e.setup.model)}</strong>
+              <span>
+                {currentModel?.quantization ?? 'GGUF'}
+                {currentModel && ` · ${formatBytes(currentModel.sizeBytes)}`}
+              </span>
+            </>
+          ) : (
+            <strong>{t('modelEmpty')}</strong>
+          )}
         </div>
-        <div className="m4a-settings__runtime-actions">
-          <button type="button" className="m4a-settings__button m4a-settings__button--primary" disabled={disabled || status?.ready === true || status?.phase === 'starting'} onClick={() => { void launch(false) }}>
-            {acting ? t('working') : dirty ? t('saveAndStart') : t('startNow')}
-          </button>
-          <button type="button" className="m4a-settings__button" disabled={disabled || engineInstalling} onClick={() => { void installEngine() }}>{releaseAction}</button>
-          <button type="button" className="m4a-settings__button" disabled={disabled || engineInstalling} onClick={() => {
-            setActing(true)
-            void fetchReleaseStatus(true).then(setRelease).catch(cause => { setError(cause instanceof Error ? cause.message : String(cause)) }).finally(() => { setActing(false) })
-          }}>{t('checkUpdates')}</button>
-          <button type="button" className="m4a-settings__button m4a-settings__button--danger" disabled={disabled || selectedVersion === undefined || status?.ready === true || engineInstalling} onClick={() => { void removeEngine() }}>{t('deleteEngine')}</button>
-        </div>
-        {release === null || (!activeEngineInstall(release) && release.install.stage === 'idle') ? null : (
-          <div className="m4a-download-status">
-            <progress max={100} value={release.install.percent} />
-            <span>{release.install.message ?? release.install.error ?? release.install.stage}</span>
-            {release.install.totalBytes === undefined ? null : <span>{formatBytes(release.install.downloadedBytes)} / {formatBytes(release.install.totalBytes)}</span>}
-            {activeEngineInstall(release) ? <button type="button" className="m4a-settings__button" onClick={() => { void stopEngineInstall() }}>{t('stopDownload')}</button> : null}
-          </div>
-        )}
-      </section>
-
-      <div className="m4a-model-workbench">
-        <section className="m4a-model-config">
-          <div className="m4a-pane-heading">
-            <div>
-              <h3>{t('currentConfiguration')}</h3>
-              <p>{t('currentConfigurationHint')}</p>
-            </div>
-          </div>
-
-          <div className="m4a-settings__segmented" role="group" aria-label={t('mode')}>
-            {(['connect', 'prompt', 'auto'] as const).map(mode => (
-              <button key={mode} type="button" className="m4a-settings__segment" aria-pressed={draft.mode === mode} disabled={disabled} onClick={() => { setField('mode', mode) }}>{t(mode)}</button>
+        <IconButton icon={ChevronRight} label={t('changeModel')} onClick={() => setTab('models')} />
+      </div>
+      {modelSelected && (
+        <details className="m4a-model-path">
+          <summary>{t('detailLabel')}</summary>
+          <code>{e.setup.model}</code>
+        </details>
+      )}
+      <section className="m4a-section">
+        <h4>{t('essential')}</h4>
+        {tokenFields}
+        <Field label={t('performance')}>
+          <div className="m4a-preset" role="group" aria-label={t('performance')}>
+            {(['conservative', 'aggressive'] as const).map((profile) => (
+              <button
+                type="button"
+                key={profile}
+                aria-pressed={e.setup.profile === profile}
+                onClick={() => w.setup({ profile })}
+                title={t(profile === 'conservative' ? 'balancedHelp' : 'performanceHelp')}
+              >
+                {profile === 'conservative' ? <Cpu size={16} /> : <Activity size={16} />}
+                {t(profile === 'conservative' ? 'balancedLabel' : 'performanceLabel')}
+                {e.setup.profile === profile && <Check size={13} />}
+              </button>
             ))}
           </div>
-
-          {draft.mode === 'connect' ? (
-            <p className="m4a-settings__hint">{t('connectHint')}</p>
-          ) : (
-            <>
-              <ModelSelection kind="main" path={setup.model} disabled={disabled} t={t} onChoose={() => { void chooseModelFile('main') }} onClear={() => {}} />
-              <ModelSelection kind="vision" path={setup.visionModel} disabled={disabled} t={t} onChoose={() => { void chooseModelFile('vision') }} onClear={() => { setSetupField('visionModel', '') }} />
-              <ModelSelection kind="mtp" path={setup.mtpModel} disabled={disabled} t={t} onChoose={() => { void chooseModelFile('mtp') }} onClear={() => { setSetup(previous => ({ ...previous, mtpModel: '', mtp: false })) }} />
-              <ModelSelection kind="embedding" path={setup.embeddingModel} disabled={disabled} t={t} onChoose={() => { void chooseModelFile('embedding') }} onClear={() => { setSetupField('embeddingModel', '') }} />
-
-              {setup.embeddingModel === '' ? null : (
-                <Field label={t('embeddingIdleTimeout')}>
-                  <input className="m4a-settings__input" type="number" min={0} value={setup.embeddingIdleTimeout} disabled={disabled} onChange={event => { setSetupField('embeddingIdleTimeout', Number(event.target.value) || 0) }} />
-                </Field>
-              )}
-
-              <div className="m4a-settings__grid m4a-settings__grid--compact">
-                <Field label={t('contextWindow')} hint={t('tokenUnitHint')}>
-                  <TokenInput value={draft.contextWindow} disabled={disabled} onChange={value => { setField('contextWindow', value) }} />
-                </Field>
-                <Field label={t('maxTokens')} hint={t('tokenUnitHint')}>
-                  <TokenInput value={draft.maxTokens} disabled={disabled} onChange={value => { setField('maxTokens', value) }} />
-                </Field>
-                <Field label={t('parallelSlots')}>
-                  <input className="m4a-settings__input" type="number" min={1} value={setup.parallel} disabled={disabled} onChange={event => { setSetupField('parallel', Math.max(1, Number(event.target.value) || 1)) }} />
-                </Field>
-                <Field label={t('automaticProfile')}>
-                  <select className="m4a-settings__select" value={setup.profile} disabled={disabled} onChange={event => { setSetupField('profile', event.target.value as ParsedEngineArguments['profile']) }}>
-                    <option value="conservative">{t('conservativeProfile')}</option>
-                    <option value="aggressive">{t('aggressiveProfile')}</option>
-                  </select>
-                </Field>
+        </Field>
+        <div className="m4a-field-grid">
+          <Field label={t('parallel')}>
+            <select
+              value={e.setup.parallel}
+              onChange={(event) => w.setup({ parallel: Number(event.target.value) })}
+            >
+              {[...new Set([1, 2, 4, 8, e.setup.parallel])]
+                .sort((a, b) => a - b)
+                .map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          <Field label={t('startupPolicy')} help={t('resourcesHelp')}>
+            <select
+              value={e.config.mode}
+              onChange={(event) => w.config({ mode: event.target.value as 'prompt' | 'auto' })}
+            >
+              <option value="prompt">{t('askStart')}</option>
+              <option value="auto">{t('autoStart')}</option>
+            </select>
+          </Field>
+        </div>
+      </section>
+      <section className="m4a-section m4a-capabilities">
+        <h4>{t('optionalFeatures')}</h4>
+        {(['vision', 'mtp', 'embedding'] as const).map((kind) => {
+          const Icon = roleIcon[kind],
+            path = attachPath(kind)
+          const active = kind === 'mtp' ? e.setup.mtp : !!path
+          return (
+            <div className="m4a-capability" key={kind}>
+              <Icon size={18} />
+              <div>
+                <Toggle
+                  label={t(roleLabel[kind])}
+                  checked={active}
+                  onChange={(enabled) => {
+                    if (kind === 'mtp' && path) w.setup({ mtp: enabled })
+                    else if (!enabled) w.selectModel('', kind)
+                    else {
+                      const available = w.library.models.find(
+                        (item) =>
+                          item.kind === kind &&
+                          item.complete &&
+                          (kind === 'embedding' || item.family === currentModel?.family),
+                      )
+                      if (available) w.selectModel(available.path, kind)
+                      else setImportKind(kind)
+                    }
+                  }}
+                />
+                {path && (
+                  <button
+                    type="button"
+                    className="m4a-text-link m4a-attachment-path"
+                    title={path}
+                    onClick={() => {
+                      setImportText(path)
+                      setImportKind(kind)
+                    }}
+                  >
+                    {fileName(path)}
+                  </button>
+                )}
               </div>
-              <Check checked={setup.mtp} disabled={disabled || setup.mtpModel === ''} label={t('enableMtp')} onChange={value => { setSetupField('mtp', value) }} />
-              <Check checked={setup.sessionCacheEnabled} disabled={disabled} label={t('enableSessionCache')} onChange={value => { setSetupField('sessionCacheEnabled', value) }} />
-              {setup.sessionCacheEnabled ? (
-                <div className="m4a-settings__grid m4a-settings__grid--compact">
-                  <Field label={t('sessionCachePath')} wide>
-                    <input className="m4a-settings__input" value={setup.sessionCache.directory} disabled={disabled} onChange={event => { setSetupField('sessionCache', { ...setup.sessionCache, directory: event.target.value }) }} />
-                  </Field>
-                  <Field label={t('sessionCacheMax')}>
-                    <input className="m4a-settings__input" value={setup.sessionCache.maxSize} disabled={disabled} onChange={event => { setSetupField('sessionCache', { ...setup.sessionCache, maxSize: event.target.value }) }} />
-                  </Field>
-                  <Field label={t('sessionCacheIdle')}>
-                    <input className="m4a-settings__input" type="number" min={0} value={setup.sessionCache.idleSeconds} disabled={disabled} onChange={event => { setSetupField('sessionCache', { ...setup.sessionCache, idleSeconds: Number(event.target.value) || 0 }) }} />
-                  </Field>
-                  <Field label={t('sessionCacheTtl')}>
-                    <input className="m4a-settings__input" type="number" min={0} value={setup.sessionCache.ttlHours} disabled={disabled} onChange={event => { setSetupField('sessionCache', { ...setup.sessionCache, ttlHours: Number(event.target.value) || 0 }) }} />
-                  </Field>
-                </div>
-              ) : null}
-            </>
-          )}
-        </section>
-
-        <aside className="m4a-model-library">
-          <div className="m4a-pane-heading">
-            <div>
-              <h3>{t('modelLibrary')}</h3>
-              <p>{t('modelLibraryHint')}</p>
+              <IconButton
+                icon={FolderOpen}
+                label={t('chooseAttachment')}
+                onClick={() => {
+                  setImportText(path)
+                  setImportKind(kind)
+                }}
+              />
             </div>
-            <button type="button" className="m4a-settings__button" disabled={disabled || libraryLoading} onClick={() => { void refreshLibrary() }}>{libraryLoading ? t('scanning') : t('rescan')}</button>
+          )
+        })}
+        <div className="m4a-cache-toggle">
+          <Toggle
+            label={t('cacheEnabled')}
+            checked={e.setup.sessionCacheEnabled}
+            onChange={(sessionCacheEnabled) => w.setup({ sessionCacheEnabled })}
+          />
+          <span className="m4a-help" tabIndex={0} aria-label={t('sessionCacheHelp')}>
+            ?<span role="tooltip">{t('sessionCacheHelp')}</span>
+          </span>
+        </div>
+      </section>
+      <button
+        type="button"
+        className={`m4a-advanced-trigger ${advanced ? 'is-active' : ''}`}
+        aria-expanded={advanced}
+        onClick={() => setAdvanced(!advanced)}
+      >
+        <Settings2 size={16} />
+        <span>{t('advancedOptions')}</span>
+        <ChevronRight size={16} />
+      </button>
+      {advanced && <AdvancedOptions workspace={w} t={t} />}
+    </div>
+  )
+  return (
+    <div className="m4a-workspace" ref={root}>
+      <header className="m4a-header">
+        <div className="m4a-brand">
+          <div className="m4a-brand-mark" aria-hidden="true">
+            <Layers3 size={23} />
           </div>
-          <div className="m4a-library-directory">
-            <input className="m4a-settings__input" value={draft.modelDirectory} disabled={disabled || modelDownloading} placeholder="D:\\Models" onChange={event => { setField('modelDirectory', event.target.value) }} />
-            <button type="button" className="m4a-settings__button" disabled={disabled || modelDownloading} onClick={() => { void chooseLibraryDirectory() }}>{t('chooseDirectory')}</button>
+          <div>
+            <h2>MoE4All</h2>
+            <span>Local inference</span>
           </div>
-          {groupedRows.length === 0 ? <p className="m4a-settings__message">{t('noModelsInLibrary')}</p> : groupedRows.map(([family, familyRows]) => (
-            <section className="m4a-model-family" key={family}>
-              <h4>{family}</h4>
-              <div className="m4a-model-family__items">
-                {familyRows.map(row => {
-                  const selected = row.path !== undefined && samePath(pathForKind(setup, row.kind), row.path)
-                  const downloading = row.recommendation?.id === modelDownload.modelId && activeModelDownload(modelDownload)
-                  const retry = row.recommendation?.id === modelDownload.modelId && (modelDownload.stage === 'error' || modelDownload.stage === 'cancelled')
-                  return (
-                    <article className={`m4a-model-item${selected ? ' m4a-model-item--selected' : ''}`} key={row.key}>
-                      <div className="m4a-model-item__topline">
-                        <span className={`m4a-model-item__kind m4a-model-item__kind--${row.kind}`}>{t(row.kind === 'main' ? 'mainModel' : row.kind === 'vision' ? 'visionModel' : row.kind === 'mtp' ? 'mtpModel' : 'embeddingModel')}</span>
-                        {row.recommendation === undefined ? null : <span className="m4a-model-item__recommended">{t('recommended')}</span>}
-                        {row.path === undefined ? <span className="m4a-model-item__remote">{t('notDownloaded')}</span> : null}
-                      </div>
-                      <strong>{row.name}</strong>
-                      <div className="m4a-model-item__meta">
-                        <span>{row.quantization}</span>
-                        <span>{formatBytes(row.sizeBytes)}</span>
-                        {row.fileCount <= 1 ? null : <span>{row.fileCount} {t('files')}</span>}
-                      </div>
-                      {row.path === undefined ? null : <code title={row.path}>{row.path}</code>}
-                      {downloading ? (
-                        <div className="m4a-model-item__download">
-                          <progress max={100} value={modelDownload.percent} />
-                          <span>{formatBytes(modelDownload.downloadedBytes)} / {formatBytes(modelDownload.totalBytes ?? row.sizeBytes)}</span>
-                          <button type="button" className="m4a-settings__button" onClick={() => { void stopModelDownload() }}>{t('stopDownload')}</button>
-                        </div>
-                      ) : (
-                        <div className="m4a-model-item__actions">
-                          {row.path === undefined ? (
-                            <button type="button" className="m4a-settings__button m4a-settings__button--primary" disabled={disabled || modelDownloading || draft.modelDirectory.trim() === ''} onClick={() => { if (row.recommendation !== undefined) void downloadModel(row.recommendation) }}>
-                              {retry ? t('retryDownload') : t('downloadRecommended')}
-                            </button>
-                          ) : (
-                            <button type="button" className="m4a-settings__button" disabled={disabled || selected} onClick={() => { useModel(row) }}>{selected ? t('selected') : t('useModel')}</button>
-                          )}
-                          {row.recommendation === undefined ? null : <a href={row.recommendation.sourceUrl} target="_blank" rel="noreferrer">{t('sourcePage')}</a>}
-                        </div>
-                      )}
-                    </article>
-                  )
-                })}
-              </div>
-            </section>
+        </div>
+        <div
+          className={`m4a-status-pill m4a-status-pill--${ready ? 'ready' : starting ? 'busy' : w.status?.phase === 'error' ? 'error' : 'idle'}`}
+          role="status"
+        >
+          <i />
+          {t(phases[w.status?.phase ?? 'checking'] ?? 'stoppedStatus')}
+        </div>
+      </header>
+      <div className="m4a-mode-switch" role="group" aria-label={t('mode')}>
+        <button
+          type="button"
+          aria-pressed={local}
+          disabled={w.disabled}
+          onClick={() => {
+            if (!local) w.config({ mode: 'prompt', endpoint: '' })
+          }}
+        >
+          <Monitor size={16} />
+          {t('localRun')}
+        </button>
+        <button
+          type="button"
+          aria-pressed={!local}
+          disabled={w.disabled}
+          onClick={() => {
+            if (local) w.config({ mode: 'connect' })
+          }}
+        >
+          <Link size={16} />
+          {t('existingService')}
+        </button>
+      </div>
+      <nav className="m4a-tabs" aria-label="MoE4All">
+        {(
+          [
+            { id: 'run', label: 'runTab', icon: Play },
+            { id: 'models', label: 'modelsTab', icon: Layers3 },
+            { id: 'engines', label: 'enginesTab', icon: Package },
+            { id: 'diagnostics', label: 'diagnosticsTab', icon: Terminal },
+          ] as const
+        ).map((item) => (
+          <button
+            type="button"
+            key={item.id}
+            aria-current={tab === item.id ? 'page' : undefined}
+            onClick={() => setTab(item.id)}
+          >
+            <item.icon size={15} />
+            {t(item.label)}
+            {item.id === 'engines' && w.release?.updateAvailable && <i className="m4a-update-dot" />}
+          </button>
+        ))}
+      </nav>
+      {w.error && (
+        <div className="m4a-message m4a-message--error" role="alert">
+          <CircleAlert size={17} />
+          <span>{w.error}</span>
+          <IconButton icon={X} label={t('cancel')} onClick={() => w.setError('')} />
+        </div>
+      )}
+      {!w.error && w.notice && (
+        <div className="m4a-message" role="status">
+          <Check size={16} />
+          <span>{w.notice}</span>
+          <IconButton icon={X} label={t('cancel')} onClick={() => w.setNotice('')} />
+        </div>
+      )}
+      {w.status?.pendingChanges && (
+        <div className="m4a-message m4a-message--warning">
+          <RotateCcw size={16} />
+          <span>{t('pendingRestart')}</span>
+        </div>
+      )}
+      {showSteps && tab === 'run' && (
+        <ol className="m4a-setup-steps" aria-label={t('setupTitle')}>
+          {[
+            { done: engineSelected, title: 'stepEngine' as const, next: 'engines' as Tab },
+            { done: modelSelected, title: 'stepModel' as const, next: 'models' as Tab },
+            { done: ready, title: 'stepStart' as const, next: 'run' as Tab },
+          ].map((step, index) => (
+            <li key={step.title} className={step.done ? 'is-done' : ''}>
+              <button type="button" onClick={() => setTab(step.next)}>
+                <span>{step.done ? <Check size={13} /> : index + 1}</span>
+                {t(step.title)}
+              </button>
+            </li>
           ))}
-          {downloadRecommendation === undefined || modelDownload.stage === 'idle' || activeModelDownload(modelDownload) ? null : (
-            <p className={modelDownload.stage === 'error' ? 'm4a-settings__error' : 'm4a-settings__hint'}>
-              {downloadRecommendation.name}: {modelDownload.error ?? modelDownload.stage}
+        </ol>
+      )}
+      {downloadTasks && (
+        <div className="m4a-transfer-list">
+          {engineTask && !['idle', 'complete'].includes(engineTask.stage) && (
+            <Transfer
+              label={`MoE4All Engine · ${t(installLabels[engineTask.stage]!)}`}
+              percent={engineTask.percent}
+              detail={`${formatBytes(engineTask.downloadedBytes)}${engineTask.totalBytes ? ` / ${formatBytes(engineTask.totalBytes)}` : ''}`}
+              error={engineTask.error}
+              actions={
+                isInstalling(w.release) ? (
+                  <IconButton icon={Square} label={t('stopTransfer')} onClick={() => void w.stopInstall()} />
+                ) : (
+                  <Button icon={RefreshCw} onClick={() => void w.install()}>
+                    {t('retryDownload')}
+                  </Button>
+                )
+              }
+            />
+          )}
+          {!['idle', 'complete'].includes(modelTask.stage) && (
+            <Transfer
+              label={currentDownload?.name ?? t('downloadRunning')}
+              percent={modelTask.percent}
+              detail={`${t(modelTask.stage === 'downloading' ? 'downloadRunning' : modelTask.stage === 'error' ? 'failedDownload' : 'pausedStatus')} · ${formatBytes(modelTask.downloadedBytes)}${modelTask.totalBytes ? ` / ${formatBytes(modelTask.totalBytes)}` : ''}`}
+              error={modelTask.error}
+              actions={
+                modelTask.stage === 'downloading' ? (
+                  <IconButton icon={Square} label={t('stopTransfer')} onClick={() => void w.stopDownload()} />
+                ) : (
+                  <Button
+                    icon={RefreshCw}
+                    onClick={() => currentDownload && void w.downloadModel(currentDownload)}
+                  >
+                    {t('continueDownload')}
+                  </Button>
+                )
+              }
+            />
+          )}
+        </div>
+      )}
+      {tab === 'run' && (
+        <>
+          {(ready || starting || w.status?.phase === 'error' || w.status?.phase === 'duplicate-process') && (
+            <section className="m4a-runtime">
+              <div className="m4a-section-heading">
+                <h3>
+                  <Activity size={16} />
+                  {t(phases[w.status?.phase ?? 'checking'] ?? 'stoppedStatus')}
+                </h3>
+                <div className="m4a-inline">
+                  {ready && <span className="m4a-badge">{t(owned ? 'pluginOwned' : 'externalOwned')}</span>}
+                  {owned && (
+                    <IconButton
+                      icon={Square}
+                      label={t('stopEngineAction')}
+                      onClick={() => setConfirmation({ kind: 'stop' })}
+                    />
+                  )}
+                </div>
+              </div>
+              <code>{w.status?.endpoint}</code>
+              {ready && (
+                <div className="m4a-runtime-models">
+                  {w.status?.models.map((model) => (
+                    <span key={model.id}>
+                      <Check size={13} />
+                      {model.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {starting && (
+                <>
+                  <progress aria-label={t('startingStatus')} />
+                  <span>
+                    {t('startupElapsed')}{' '}
+                    {Math.max(
+                      0,
+                      Math.floor(
+                        (clock - Date.parse(w.status?.startupStartedAt ?? new Date(clock).toISOString())) /
+                          1000,
+                      ),
+                    )}
+                    s
+                  </span>
+                </>
+              )}
+              {w.status?.phase === 'duplicate-process' && <p>{t('externalProcessHelp')}</p>}
+              {(starting || w.status?.phase === 'error') && (
+                <pre className="m4a-log m4a-log--preview">{output || w.status?.message || t('noOutput')}</pre>
+              )}
+            </section>
+          )}
+          {local ? (
+            <div className="m4a-run-layout">
+              {runConfig}
+              <aside className="m4a-run-library">
+                <ModelLibraryView workspace={w} t={t} compact onImport={() => setImportKind('main')} />
+              </aside>
+            </div>
+          ) : (
+            <div className="m4a-connection-view">
+              <div className="m4a-section-heading">
+                <h3>{t('connection')}</h3>
+                <Link size={20} />
+              </div>
+              <Field label={t('currentEndpoint')}>
+                <input
+                  value={e.config.endpoint || endpoint}
+                  onChange={(event) => w.config({ endpoint: event.target.value })}
+                  placeholder="http://127.0.0.1:8080/v1"
+                />
+              </Field>
+              <Field label={t('apiKeyEnv')} help={t('apiKeyHelp')}>
+                <input
+                  value={e.config.apiKeyEnv ?? ''}
+                  placeholder="INFR_API_KEY"
+                  onChange={(event) => w.config({ apiKeyEnv: event.target.value })}
+                />
+              </Field>
+              <Toggle
+                label={t('allowRemoteEndpoint')}
+                checked={e.config.allowRemoteEndpoint ?? false}
+                onChange={(allowRemoteEndpoint) => w.config({ allowRemoteEndpoint })}
+              />
+              <section className="m4a-section">
+                <h4>{t('model')}</h4>
+                {tokenFields}
+                <Toggle
+                  label={t('vision')}
+                  checked={e.config.vision ?? true}
+                  onChange={(vision) => w.config({ vision })}
+                />
+              </section>
+            </div>
+          )}
+        </>
+      )}
+      {tab === 'models' && (
+        <ModelLibraryView
+          workspace={w}
+          t={t}
+          onImport={() => setImportKind('main')}
+          onSelected={() => setTab('run')}
+        />
+      )}
+      {tab === 'engines' && (
+        <EngineVersionsView
+          workspace={w}
+          t={t}
+          onDelete={(version) => setConfirmation({ kind: 'delete', version })}
+        />
+      )}
+      {tab === 'diagnostics' && (
+        <section className="m4a-diagnostics">
+          <div className="m4a-section-heading">
+            <h3>{t('runtimeOutput')}</h3>
+            <div className="m4a-inline">
+              <IconButton icon={RefreshCw} label={t('refreshStatus')} onClick={() => void w.refresh()} />
+              <IconButton
+                icon={copied ? Check : Copy}
+                label={t(copied ? 'copied' : 'copyOutput')}
+                disabled={!output}
+                onClick={() => {
+                  void navigator.clipboard
+                    .writeText(output)
+                    .then(() => setCopied(true))
+                    .catch((error) => w.setError(String(error)))
+                }}
+              />
+            </div>
+          </div>
+          <dl className="m4a-diagnostic-facts">
+            <div>
+              <dt>{t('currentEndpoint')}</dt>
+              <dd>{w.status?.endpoint || endpoint}</dd>
+            </div>
+            <div>
+              <dt>{t('selectedEngine')}</dt>
+              <dd>{w.status?.executable || e.config.executable || t('noEngine')}</dd>
+            </div>
+            <div>
+              <dt>{t('returnedModels')}</dt>
+              <dd>{w.status?.models.map((model) => model.name).join(', ') || '-'}</dd>
+            </div>
+          </dl>
+          <pre className="m4a-log" tabIndex={0}>
+            {output || t('noOutput')}
+          </pre>
+        </section>
+      )}
+      <footer className="m4a-footer">
+        <div>
+          <span className={`m4a-save-indicator ${w.dirty ? 'is-dirty' : ''}`} />
+          {t(w.dirty ? 'pendingEdits' : 'saved')}
+          {local && selectedVersion && <small>{selectedVersion.name}</small>}
+        </div>
+        <div className="m4a-footer-actions">
+          {w.dirty && (
+            <IconButton
+              icon={RotateCcw}
+              label={t('revert')}
+              disabled={w.disabled}
+              onClick={() => setConfirmation({ kind: 'discard' })}
+            />
+          )}
+          <Button
+            icon={Save}
+            disabled={!w.dirty || w.disabled}
+            busy={w.working === 'save'}
+            onClick={() => void w.save()}
+          >
+            {t('save')}
+          </Button>
+          <Button
+            icon={!local ? Link : ready && !needsRestart ? Check : needsRestart ? RotateCcw : Play}
+            kind="primary"
+            disabled={w.disabled || starting || (local && ready && !needsRestart)}
+            busy={w.working === 'start'}
+            onClick={primaryAction}
+          >
+            {t(primaryLabel)}
+          </Button>
+        </div>
+      </footer>
+      {importKind && (
+        <Dialog
+          title={t(roleLabel[importKind])}
+          closeLabel={t('cancel')}
+          onClose={() => {
+            setImportKind(null)
+            setImportText('')
+          }}
+          actions={
+            <>
+              <Button onClick={() => setImportKind(null)}>{t('cancel')}</Button>
+              <Button
+                icon={Plus}
+                kind="primary"
+                disabled={!importText.trim()}
+                busy={w.working === 'import'}
+                onClick={() => {
+                  void w.importPath(importText, importKind).then((ok) => {
+                    if (!ok) return
+                    setImportKind(null)
+                    setImportText('')
+                  })
+                }}
+              >
+                {t('addPath')}
+              </Button>
+            </>
+          }
+        >
+          {w.error && (
+            <p className="m4a-field-error" role="alert">
+              {w.error}
             </p>
           )}
-        </aside>
-      </div>
-
-      <details className="m4a-settings__details" open={draft.mode === 'connect'}>
-        <summary>{t('connection')}</summary>
-        <div className="m4a-settings__grid">
-          <Field label={t('protocol')}>
-            <select className="m4a-settings__select" value={draft.protocol} disabled={disabled} onChange={event => { setField('protocol', event.target.value as 'http' | 'https') }}><option value="http">HTTP</option><option value="https">HTTPS</option></select>
+          <Field label={t('importPath')}>
+            <input
+              autoFocus
+              value={importText}
+              onChange={(event) => setImportText(event.target.value)}
+              placeholder="D:\Models\model.gguf"
+            />
           </Field>
-          <Field label={t('host')}><input className="m4a-settings__input" value={draft.host} disabled={disabled} onChange={event => { setField('host', event.target.value) }} /></Field>
-          <Field label={t('port')}><input className="m4a-settings__input" type="number" min={1} max={65535} value={draft.port} disabled={disabled} onChange={event => { numberField('port', event.target.value) }} /></Field>
-          <Field label={t('apiBasePath')}><input className="m4a-settings__input" value={draft.apiBasePath} disabled={disabled} onChange={event => { setField('apiBasePath', event.target.value) }} /></Field>
-          <Field label={t('endpoint')} hint={t('endpointHint')} wide><input className="m4a-settings__input" value={draft.endpoint} disabled={disabled} placeholder="http://127.0.0.1:8080/v1" onChange={event => { setField('endpoint', event.target.value) }} /></Field>
-          <Field label={t('apiKeyEnv')} wide><input className="m4a-settings__input" value={draft.apiKeyEnv} disabled={disabled} placeholder="MOE4ALL_API_KEY" onChange={event => { setField('apiKeyEnv', event.target.value) }} /></Field>
-        </div>
-        <Check checked={draft.allowRemoteEndpoint} disabled={disabled} label={t('allowRemoteEndpoint')} onChange={value => { setField('allowRemoteEndpoint', value) }} />
-      </details>
-
-      <details className="m4a-settings__details">
-        <summary>{t('advanced')}</summary>
-        <div className="m4a-settings__grid">
-          <Field label={t('executable')} wide><input className="m4a-settings__input" value={draft.executable} disabled={disabled} onChange={event => { setField('executable', event.target.value) }} /></Field>
-          <Field label={t('workingDirectory')} wide><input className="m4a-settings__input" value={draft.workingDirectory} disabled={disabled} onChange={event => { setField('workingDirectory', event.target.value) }} /></Field>
-          <Field label={t('minimumFreeRam')}><div className="m4a-settings__percentage"><input type="range" min={0} max={1} step={0.05} value={draft.minimumFreeRamFraction} disabled={disabled} onChange={event => { numberField('minimumFreeRamFraction', event.target.value) }} /><output>{Math.round(draft.minimumFreeRamFraction * 100)}%</output></div></Field>
-          <Field label={t('minimumFreeVram')}><div className="m4a-settings__percentage"><input type="range" min={0} max={1} step={0.05} value={draft.minimumFreeVramFraction} disabled={disabled} onChange={event => { numberField('minimumFreeVramFraction', event.target.value) }} /><output>{Math.round(draft.minimumFreeVramFraction * 100)}%</output></div></Field>
-        </div>
-        <Check checked={draft.stopOnUnload} disabled={disabled} label={t('stopOnUnload')} onChange={value => { setField('stopOnUnload', value) }} />
-        <Check checked={draft.logOutput} disabled={disabled} label={t('logOutput')} onChange={value => { setField('logOutput', value) }} />
-      </details>
-
-      <div className="m4a-settings__actions">
-        <span className="m4a-settings__save-state">{!snapshot.writable ? t('readOnly') : dirty ? t('unsaved') : t('saved')}</span>
-        <button type="button" className="m4a-settings__button" disabled={disabled || !dirty || current === null} onClick={() => { if (current !== null) { setDraft(current); setSetup(parseEngineArguments(current.arguments)) } }}>{t('revert')}</button>
-        <button type="button" className="m4a-settings__button m4a-settings__button--primary" disabled={disabled || !dirty} onClick={() => { void submit() }}>{saving ? t('saving') : t('save')}</button>
-      </div>
-
-      {!confirmBusy ? null : (
-        <div className="m4a-overlay" role="presentation">
-          <section className="m4a-overlay__dialog" role="alertdialog" aria-modal="true" aria-labelledby="m4a-busy-title">
-            <h2 id="m4a-busy-title" className="m4a-overlay__title">{t('resourceWarningTitle')}</h2>
-            <p className="m4a-overlay__body">{t('resourceWarningBody')}</p>
-            <ul className="m4a-overlay__reasons">{(status?.reasons ?? []).map(reason => <li key={reason}>{reason}</li>)}</ul>
-            <div className="m4a-overlay__actions">
-              <button type="button" className="m4a-settings__button" disabled={acting} onClick={() => { setConfirmBusy(false) }}>{t('cancel')}</button>
-              <button type="button" className="m4a-settings__button m4a-settings__button--danger" disabled={acting} onClick={() => { void launch(true) }}>{acting ? t('startingNow') : t('startAnyway')}</button>
-            </div>
-          </section>
-        </div>
+          <div className="m4a-dialog-choices">
+            {w.nativePicker && (
+              <Button
+                icon={FilePlus2}
+                onClick={() => {
+                  void w.pickFile(importKind)
+                  setImportKind(null)
+                }}
+              >
+                {t('chooseFile')}
+              </Button>
+            )}
+            <Button
+              icon={FolderOpen}
+              onClick={() => {
+                void props
+                  .pickDirectory()
+                  .then((path) => {
+                    if (path) setImportText(path)
+                  })
+                  .catch((error) => w.setError(String(error)))
+              }}
+            >
+              {t('chooseDirectory')}
+            </Button>
+            <Button
+              icon={ArrowDownToLine}
+              onClick={() => {
+                setTab('models')
+                setImportKind(null)
+              }}
+            >
+              {t('filterRecommended')}
+            </Button>
+          </div>
+          {w.library.models
+            .filter((item) => item.kind === importKind && item.complete)
+            .map((item) => (
+              <button
+                type="button"
+                className="m4a-import-choice"
+                key={item.id}
+                onClick={() => {
+                  w.selectModel(item.path, importKind)
+                  setImportKind(null)
+                }}
+              >
+                <Layers3 size={16} />
+                <span>{item.name}</span>
+                <ArrowRight size={15} />
+              </button>
+            ))}
+        </Dialog>
+      )}
+      {confirmation && (
+        <Dialog
+          title={t(
+            confirmation.kind === 'delete'
+              ? 'removeEngineTitle'
+              : confirmation.kind === 'stop'
+                ? 'stopEngineTitle'
+                : confirmation.kind === 'restart'
+                  ? 'restartEngineTitle'
+                  : 'discardTitle',
+          )}
+          closeLabel={t('cancel')}
+          onClose={() => setConfirmation(null)}
+          actions={
+            <>
+              <Button onClick={() => setConfirmation(null)}>{t('cancel')}</Button>
+              <Button
+                kind={confirmation.kind === 'restart' ? 'primary' : 'danger'}
+                onClick={() => {
+                  if (confirmation.kind === 'stop') void w.stop()
+                  if (confirmation.kind === 'restart') void w.launch(false, true)
+                  if (confirmation.kind === 'delete') void w.removeVersion(confirmation.version)
+                  if (confirmation.kind === 'discard') w.revert()
+                  setConfirmation(null)
+                }}
+              >
+                {t(
+                  confirmation.kind === 'delete'
+                    ? 'deleteEngine'
+                    : confirmation.kind === 'stop'
+                      ? 'stopEngineAction'
+                      : confirmation.kind === 'restart'
+                        ? 'restartEngineAction'
+                        : 'discardAction',
+                )}
+              </Button>
+            </>
+          }
+        >
+          {confirmation.kind === 'delete' && <strong>{confirmation.version.name}</strong>}
+          {confirmation.kind !== 'discard' && (
+            <p>
+              {t(
+                confirmation.kind === 'delete'
+                  ? 'removeEngineBody'
+                  : confirmation.kind === 'stop'
+                    ? 'stopEngineBody'
+                    : 'restartEngineBody',
+              )}
+            </p>
+          )}
+        </Dialog>
+      )}
+      {w.resourcePrompt && (
+        <Dialog
+          title={t('resourceWarningTitle')}
+          closeLabel={t('cancel')}
+          onClose={() => w.setResourcePrompt(false)}
+          actions={
+            <>
+              <Button onClick={() => w.setResourcePrompt(false)}>{t('cancel')}</Button>
+              <Button
+                kind="danger"
+                onClick={() => {
+                  w.setResourcePrompt(false)
+                  void w.launch(true)
+                }}
+              >
+                {t('startAnyway')}
+              </Button>
+            </>
+          }
+        >
+          <p>{t('resourceWarningBody')}</p>
+          {w.status?.reasons?.map((reason) => (
+            <p key={reason}>{reason}</p>
+          ))}
+        </Dialog>
       )}
     </div>
   )
-}
-
-declare module '@deepseek-ai/dsh-client-ui-slots' {
-  interface LocaleNamespaceMap {
-    'settings.moe4all': Moe4AllLocaleKey
-  }
 }

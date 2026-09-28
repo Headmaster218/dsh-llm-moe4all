@@ -19,6 +19,7 @@ export interface EngineSetupValues {
     profile: EngineAutoProfile;
     mtp: boolean;
     sessionCache?: SessionCacheSetup;
+    extraArguments?: string[];
 }
 export interface ParsedEngineArguments {
     model: string;
@@ -33,6 +34,8 @@ export interface ParsedEngineArguments {
     sessionCache: SessionCacheSetup;
 }
 export declare function normalizeSetupPath(value: string): string;
+export declare function modelArgument(arguments_: string[]): string;
+export declare function unmanagedArguments(arguments_: string[]): string[];
 export declare function parseEngineArguments(arguments_: string[]): ParsedEngineArguments;
 export declare function buildEngineArguments(values: EngineSetupValues): string[];
 //# sourceMappingURL=engine-setup.d.ts.map

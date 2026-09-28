@@ -3,7 +3,7 @@ import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 
-import { EngineController, type EngineConfig } from './engine-controller.js'
+import { EngineController, endpointFromConfig, validateEndpoint, type EngineConfig } from './engine-controller.js'
 import { EngineReleaseManager } from './engine-release.js'
 import { makeEngineRoutes } from './host-routes.js'
 import { ModelDownloadManager } from './model-download.js'
@@ -56,10 +56,10 @@ interface ActiveRuntime {
   discovery: Promise<void>
 }
 
-function startRuntime(ctx: Context, loader: LoaderLike, config: Config): ActiveRuntime {
+function startRuntime(ctx: Context, loader: LoaderLike, config: Config, allowAutomatic = true): ActiveRuntime {
   const controller = new EngineController(config, ctx.logger)
   const provider = new ModelProviderBridge(loader, controller.endpoint, config, ctx.logger)
-  const startup = controller.ensureReady().catch((error: unknown) => {
+  const startup = controller.ensureReady(allowAutomatic).catch((error: unknown) => {
     ctx.logger.error(error instanceof Error ? error : new Error(String(error)))
     return false
   })
@@ -70,14 +70,15 @@ function startRuntime(ctx: Context, loader: LoaderLike, config: Config): ActiveR
   return { controller, provider, startup, discovery }
 }
 
-async function stopRuntime(runtime: ActiveRuntime): Promise<void> {
+async function stopRuntime(runtime: ActiveRuntime, forceStop = false): Promise<void> {
   await runtime.provider.dispose()
-  await runtime.controller.dispose()
+  await runtime.controller.dispose(forceStop)
   await Promise.all([runtime.startup, runtime.discovery])
 }
 
 function configSignature(config: Config): string {
-  return JSON.stringify(config)
+  const { modelDirectory: _, ...runtime } = config
+  return JSON.stringify(runtime)
 }
 
 export function apply(ctx: Context, config: Config): () => Promise<void> {
@@ -87,28 +88,42 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
   let source = (): Config => config
   let active: ActiveRuntime | undefined = startRuntime(ctx, loader, config)
   let activeSignature = configSignature(config)
+  let activeConfig = config
   let transition = Promise.resolve()
   let restartTimer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
+
+  const applySettings = (stopOwned = false): Promise<void> => {
+    if (restartTimer !== undefined) { clearTimeout(restartTimer); restartTimer = undefined }
+    const run = transition.then(async () => {
+      if (disposed) return
+      let next = source()
+      let signature = configSignature(next)
+      if (!stopOwned && signature === activeSignature) return
+      try { validateEndpoint(endpointFromConfig(next), next.allowRemoteEndpoint) }
+      catch (error) {
+        if (!stopOwned) throw error
+        next = activeConfig
+        signature = activeSignature
+      }
+      if (!stopOwned && (active?.controller.ownsProcess || active?.controller.isStarting)) return
+      const previous = active
+      active = undefined
+      if (previous !== undefined) await stopRuntime(previous, stopOwned)
+      if (disposed) return
+      active = startRuntime(ctx, loader, next, false)
+      activeSignature = signature
+      activeConfig = next
+    })
+    transition = run.catch(error => { ctx.logger.error(error instanceof Error ? error : new Error(String(error))) })
+    return run
+  }
 
   const scheduleRestart = (): void => {
     if (restartTimer !== undefined) clearTimeout(restartTimer)
     restartTimer = setTimeout(() => {
       restartTimer = undefined
-      const next = source()
-      const nextSignature = configSignature(next)
-      if (disposed || nextSignature === activeSignature) return
-      transition = transition.then(async () => {
-        if (disposed) return
-        const previous = active
-        active = undefined
-        if (previous !== undefined) await stopRuntime(previous)
-        if (disposed) return
-        active = startRuntime(ctx, loader, next)
-        activeSignature = nextSignature
-      }).catch((error: unknown) => {
-        ctx.logger.error(error instanceof Error ? error : new Error(String(error)))
-      })
+      void applySettings().catch(() => {})
     }, 250)
   }
 
@@ -126,6 +141,12 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
       models: () => active?.provider.models ?? [],
       refreshModels: async () => { await active?.provider.refreshNow() },
       configuredExecutable: () => source().executable ?? '',
+      pendingChanges: () => activeSignature !== configSignature(source()),
+      prepareStart: () => applySettings(),
+      stop: async () => {
+        if (!active?.controller.ownsProcess && !active?.controller.isStarting) throw new Error('Only an engine started by this plugin can be stopped.')
+        await applySettings(true)
+      },
       releases,
       downloads,
     })

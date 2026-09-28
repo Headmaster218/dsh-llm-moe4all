@@ -73,11 +73,13 @@ test('managed engine downloads can be cancelled and retried', async () => {
   const root = await mkdtemp(join(tmpdir(), 'moe4all-release-cancel-'))
   try {
     let signalArchiveStarted: (() => void) | undefined
+    let downloads = 0
     const archiveStarted = new Promise<void>((resolve) => { signalArchiveStarted = resolve })
     const manager = new EngineReleaseManager(root, {
       async fetch(input, init) {
         if (String(input).includes('/releases/latest')) return Response.json(release)
         if (String(input).endsWith('.sha256')) return new Response(`${digest}  ${release.assets[0]!.name}\n`)
+        if (++downloads > 1) return new Response(archive)
         signalArchiveStarted?.()
         return new Response(new ReadableStream<Uint8Array>({
           start(controller) {
@@ -87,6 +89,10 @@ test('managed engine downloads can be cancelled and retried', async () => {
           },
         }), { headers: { 'content-length': String(archive.byteLength) } })
       },
+      async expandArchive(_path, destination) {
+        await mkdir(destination, { recursive: true })
+        await writeFile(join(destination, 'infr.exe'), 'fake')
+      },
     })
 
     const installing = manager.installLatest()
@@ -94,6 +100,9 @@ test('managed engine downloads can be cancelled and retried', async () => {
     assert.equal(manager.cancelInstall().stage, 'cancelled')
     await assert.rejects(installing, /cancelled/u)
     assert.equal((await manager.status()).install.stage, 'cancelled')
+    const retried = await manager.installLatest()
+    assert.equal(retried.tag, release.tag_name)
+    assert.equal((await manager.status()).install.stage, 'complete')
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -145,4 +154,22 @@ test('managed engine versions can be enumerated and only inactive versions can b
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('local engine inventory stays usable offline without probing GitHub on each poll', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'moe4all-offline-'))
+  try {
+    const directory = join(root, 'releases', 'release-0.8.0')
+    await mkdir(directory, { recursive: true })
+    const executable = join(directory, 'infr.exe')
+    await writeFile(executable, 'fake')
+    let requests = 0
+    const manager = new EngineReleaseManager(root, { fetch: async () => { requests++; throw new Error('offline') } })
+    assert.equal((await manager.status(executable)).versions.length, 1)
+    assert.equal(requests, 0)
+    const checked = await manager.status(executable, true)
+    assert.equal(checked.versions.length, 1)
+    assert(checked.message)
+    assert(requests > 0)
+  } finally { await rm(root, { recursive: true, force: true }) }
 })

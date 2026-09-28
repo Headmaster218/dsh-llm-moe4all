@@ -370,7 +370,13 @@ export class EngineReleaseManager {
         message: 'Automatic MoE4All installation currently supports Windows x86_64 only.',
       }
     }
-    const [installed, versions, latest] = await Promise.all([this.installed(), this.versions(), this.latest(force)])
+    const [installed, versions] = await Promise.all([this.installed(), this.versions()])
+    let latest = this.latestCache?.value
+    let message: string | undefined
+    if (force) {
+      try { latest = await this.latest(true) }
+      catch (error) { message = error instanceof Error ? error.message : String(error) }
+    }
     const managed = installed !== undefined && (
       currentExecutable.trim() === ''
       || resolve(currentExecutable) === resolve(installed.executable)
@@ -380,8 +386,9 @@ export class EngineReleaseManager {
       managed,
       ...(installed === undefined ? {} : { installed }),
       versions,
-      latest,
-      updateAvailable: managed && installed.tag !== latest.tag,
+      ...(latest === undefined ? {} : { latest }),
+      ...(message === undefined ? {} : { message }),
+      updateAvailable: latest !== undefined && versions.find(item => resolve(item.executable) === resolve(currentExecutable || installed?.executable || '.'))?.tag !== latest.tag,
       install: this.progressSnapshot(),
     }
   }
@@ -390,6 +397,7 @@ export class EngineReleaseManager {
     return this.runInstall(async (signal) => {
       this.setProgress(progress('checking', 0, undefined, 'Checking the latest official release...'))
       const release = await this.latest(true)
+      signal.throwIfAborted()
       const releasesRoot = join(this.root, 'releases')
       const target = join(releasesRoot, safeTag(release.tag))
       assertInside(this.root, target)
@@ -557,7 +565,9 @@ export class EngineReleaseManager {
     assertInside(this.root, extracted)
     await mkdir(extracted, { recursive: true })
     this.setProgress(progress('extracting', this.installProgress.downloadedBytes, this.installProgress.totalBytes, 'Extracting MoE4All...'))
+    signal.throwIfAborted()
     await this.dependencies.expandArchive(archivePath, extracted, signal)
+    signal.throwIfAborted()
     const stagedExecutable = await findExecutable(extracted)
     if (stagedExecutable === undefined) throw new Error('The MoE4All archive contains no infr.exe.')
     this.setProgress(progress('finalizing', this.installProgress.downloadedBytes, this.installProgress.totalBytes, 'Finalizing the installation...'))

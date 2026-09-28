@@ -23,6 +23,8 @@ export interface LocalModelEntry {
     quantization: string;
     sizeBytes: number;
     fileCount: number;
+    expectedFiles: number;
+    complete: boolean;
 }
 export interface LocalModelLibrary {
     directory: string;

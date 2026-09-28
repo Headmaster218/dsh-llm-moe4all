@@ -1,4 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 
 import type { EngineController, EngineRuntimeStatus, EngineStartResult } from './engine-controller.js'
@@ -11,6 +13,7 @@ import { nativeFilePickerAvailable, pickGgufFile } from './native-file-picker.js
 export const ENGINE_PATHS = {
   status: '/api/moe4all/status',
   start: '/api/moe4all/start',
+  stop: '/api/moe4all/stop',
   release: '/api/moe4all/release',
   install: '/api/moe4all/install',
   cancelInstall: '/api/moe4all/install-cancel',
@@ -27,6 +30,7 @@ export const ENGINE_PATHS = {
 
 export interface EngineControlStatus extends EngineRuntimeStatus {
   models: DiscoveredModel[]
+  pendingChanges?: boolean
 }
 
 export interface EngineRuntimeAccess {
@@ -34,6 +38,9 @@ export interface EngineRuntimeAccess {
   models(): DiscoveredModel[]
   refreshModels(): Promise<void>
   configuredExecutable(): string
+  pendingChanges?(): boolean
+  prepareStart?(): Promise<void>
+  stop?(): Promise<void>
   releases: EngineReleaseManager
   downloads: ModelDownloadManager
 }
@@ -128,7 +135,7 @@ async function status(access: EngineRuntimeAccess): Promise<EngineControlStatus>
       models: [],
     }
   }
-  return { ...await controller.refreshStatus(), models: access.models() }
+  return { ...await controller.refreshStatus(), models: access.models(), pendingChanges: access.pendingChanges?.() ?? false }
 }
 
 export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
@@ -144,6 +151,11 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
       writeJson(response, 400, { ok: false, code: 'invalid-body' })
       return
     }
+    try { await access.prepareStart?.() }
+    catch (error) {
+      writeJson(response, 400, { ok: false, message: error instanceof Error ? error.message : String(error) })
+      return
+    }
     const controller = access.controller()
     if (controller === undefined) {
       writeJson(response, 503, { ok: false, code: 'runtime-restarting' })
@@ -152,6 +164,17 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
     const result: EngineStartResult = await controller.requestStart(body.force === true)
     if (result.ok) await access.refreshModels()
     writeJson(response, 200, { ...result, status: { ...result.status, models: access.models() } })
+  }
+
+  const handleStop = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    if (!method(request, response, 'POST') || !fenced(request, response)) return
+    try {
+      if (access.stop === undefined) throw new Error('Engine stop is unavailable.')
+      await access.stop()
+      writeJson(response, 200, { ok: true, status: await status(access) })
+    } catch (error) {
+      writeJson(response, 409, { ok: false, message: error instanceof Error ? error.message : String(error) })
+    }
   }
 
   const handleRelease = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
@@ -203,7 +226,7 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
       return
     }
     const controller = access.controller()
-    if (controller?.statusSnapshot().ready === true) {
+    if (controller?.ownsProcess || controller?.isStarting || controller?.statusSnapshot().ready) {
       writeJson(response, 409, { ok: false, code: 'engine-running', message: 'Stop the managed engine before deleting an engine version.' })
       return
     }
@@ -297,6 +320,7 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
       models: access.downloads.catalog(),
       download: access.downloads.status(),
       capabilities: { nativeFilePicker: nativeFilePickerAvailable() },
+      defaultDirectory: join(process.env.DSH_HOME ? resolve(process.env.DSH_HOME) : join(homedir(), '.dsh'), 'moe4all-models'),
     })
   }
 
@@ -327,6 +351,7 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
   return [
     { kind: 'exact', path: ENGINE_PATHS.status, handler: handleStatus },
     { kind: 'exact', path: ENGINE_PATHS.start, handler: handleStart },
+    { kind: 'exact', path: ENGINE_PATHS.stop, handler: handleStop },
     { kind: 'exact', path: ENGINE_PATHS.release, handler: handleRelease },
     { kind: 'exact', path: ENGINE_PATHS.install, handler: handleInstall },
     { kind: 'exact', path: ENGINE_PATHS.cancelInstall, handler: handleCancelInstall },

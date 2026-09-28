@@ -29,6 +29,8 @@ export interface LocalModelEntry {
   quantization: string
   sizeBytes: number
   fileCount: number
+  expectedFiles: number
+  complete: boolean
 }
 
 export interface LocalModelLibrary {
@@ -125,9 +127,12 @@ export async function discoverModelLibrary(input: string, selectedPaths: string[
   const files = new Map<string, LibraryFile>()
   let directory = normalized === '' ? '' : resolve(normalized)
   if (directory !== '') {
-    const details = await stat(directory)
-    if (details.isFile()) directory = dirname(directory)
-    else if (!details.isDirectory()) throw new Error('The model library path is not a file or directory.')
+    const details = await stat(directory).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return undefined
+      throw error
+    })
+    if (details?.isFile()) directory = dirname(directory)
+    else if (details !== undefined && !details.isDirectory()) throw new Error('The model library path is not a file or directory.')
     await collectModelFiles(directory, 4, files)
   }
   for (const raw of selectedPaths) {
@@ -155,6 +160,9 @@ export async function discoverModelLibrary(input: string, selectedPaths: string[
     const first = group[0]!
     const rawName = basename(shardIdentity(first.path))
     const name = rawName.replace(/\.gguf$/iu, '')
+    const shard = /-(\d{5})-of-(\d{5})\.gguf$/iu.exec(first.path)
+    const expectedFiles = shard === null ? 1 : Number(shard[2])
+    const complete = group.length === expectedFiles && (shard === null || group.every((item, index) => Number(/-(\d{5})-of-/iu.exec(item.path)?.[1]) === index + 1))
     return {
       id,
       path: first.path,
@@ -165,6 +173,8 @@ export async function discoverModelLibrary(input: string, selectedPaths: string[
       quantization: modelQuantization(name),
       sizeBytes: group.reduce((sum, item) => sum + item.size, 0),
       fileCount: group.length,
+      expectedFiles,
+      complete,
     }
   })
   models.sort((left, right) => (
@@ -209,6 +219,16 @@ export async function validateSetupModelPaths(paths: SetupModelPaths): Promise<S
     const info = await stat(path)
     if (!info.isFile() || extname(path).toLowerCase() !== '.gguf') {
       throw new Error(`${kind} model path must point to a GGUF file.`)
+    }
+    const shard = /^(.*)-(\d{5})-of-(\d{5})\.gguf$/iu.exec(path)
+    if (shard) {
+      const total = Number(shard[3])
+      if (total < 1 || total > 10_000) throw new Error(`${kind} model has an invalid shard count.`)
+      for (let index = 1; index <= total; index++) {
+        const expected = `${shard[1]}-${String(index).padStart(5, '0')}-of-${shard[3]}.gguf`
+        const part = await stat(expected).catch(() => undefined)
+        if (!part?.isFile()) throw new Error(`Missing model shard: ${expected}`)
+      }
     }
     result[kind] = path
   }

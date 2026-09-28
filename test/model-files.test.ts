@@ -54,8 +54,24 @@ test('model library recursively groups shards and reports family, role, quantiza
     assert.equal(main.quantization, 'AD-4.27bpw-Q4_K_M-M64')
     assert.equal(main.sizeBytes, 7)
     assert.equal(main.fileCount, 2)
+    assert.equal(main.expectedFiles, 2)
+    assert.equal(main.complete, true)
     assert.equal(result.models.find(item => item.kind === 'vision')?.quantization, 'F16')
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
+})
+
+test('missing storage directories are empty and incomplete shard groups are not usable', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'moe4all-incomplete-'))
+  try {
+    assert.deepEqual((await discoverModelLibrary(join(directory, 'not-created'))).models, [])
+    await writeFile(join(directory, 'chat-00001-of-00003.gguf'), 'one')
+    await writeFile(join(directory, 'chat-00003-of-00003.gguf'), 'three')
+    const model = (await discoverModelLibrary(directory)).models[0]!
+    assert.equal(model.fileCount, 2)
+    assert.equal(model.expectedFiles, 3)
+    assert.equal(model.complete, false)
+    await assert.rejects(validateSetupModelPaths({ main: model.path }), /Missing model shard/)
+  } finally { await rm(directory, { recursive: true, force: true }) }
 })

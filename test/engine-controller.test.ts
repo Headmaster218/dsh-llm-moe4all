@@ -52,6 +52,9 @@ test('default endpoint uses the MoE4All 8080 port and supports an explicit host 
   assert.equal(endpointFromConfig({}), 'http://127.0.0.1:8080/v1')
   assert.equal(endpointFromConfig({ host: '192.168.1.20', port: 9000 }), 'http://192.168.1.20:9000/v1')
   assert.equal(endpointFromConfig({ endpoint: 'https://example.com/custom' }), 'https://example.com/custom')
+  assert.equal(endpointFromConfig({ mode: 'prompt', host: '0.0.0.0' }), 'http://127.0.0.1:8080/v1')
+  assert.equal(endpointFromConfig({ mode: 'auto', host: '::' }), 'http://[::1]:8080/v1')
+  assert.equal(endpointFromConfig({ mode: 'connect', host: '192.168.1.20', port: 1234 }), 'http://192.168.1.20:1234/v1')
 })
 
 test('remote endpoints require explicit opt-in', () => {
@@ -84,7 +87,9 @@ test('connect mode reuses a healthy engine', async () => {
   const controller = new EngineController({ mode: 'connect', endpoint: endpoint.href }, quietLogger)
   assert.equal(await controller.ensureReady(), true)
   assert.equal(await probeHealth(endpoint, 500), true)
-  await controller.dispose()
+  assert.equal(controller.statusSnapshot().owned, false)
+  await controller.dispose(true)
+  assert.equal(await probeHealth(endpoint, 500), true)
   server.close()
   await once(server, 'close')
 })
@@ -107,7 +112,45 @@ test('auto mode starts and stops a configured engine only when the machine is id
   assert.equal(await controller.ensureReady(), true)
   assert.equal(await probeHealth(new URL(`http://127.0.0.1:${port}/v1`), 500), true)
   assert.equal(controller.statusSnapshot().startupLines?.includes('fake engine loading'), true)
+  assert.equal((await controller.refreshStatus()).startupLines?.includes('fake engine loading'), true)
+  assert.equal(controller.statusSnapshot().owned, true)
   await controller.dispose()
+})
+
+test('applying saved auto settings can defer startup, then explicitly stop an owned persistent engine', async () => {
+  const port = await unusedPort()
+  const endpoint = new URL(`http://127.0.0.1:${port}/v1`)
+  const controller = new EngineController({
+    mode: 'auto', endpoint: endpoint.href, executable: process.execPath,
+    arguments: [join(import.meta.dirname, 'fake-engine.mjs'), String(port)],
+    startupTimeoutMs: 5000, healthTimeoutMs: 100, pollIntervalMs: 25,
+    shutdownTimeoutMs: 2000, stopOnUnload: false, logOutput: false,
+  }, quietLogger, dependencies())
+  try {
+    assert.equal(await controller.ensureReady(false), false)
+    assert.equal(controller.ownsProcess, false)
+    assert.equal(await probeHealth(endpoint, 100), false)
+    assert.equal((await controller.requestStart()).ok, true)
+    assert.equal(controller.ownsProcess, true)
+  } finally { await controller.dispose(true) }
+  assert.equal(await probeHealth(endpoint, 100), false)
+})
+
+test('testing an offline connection never starts a saved local engine', async () => {
+  const port = await unusedPort()
+  let detected = false
+  const controller = new EngineController({
+    mode: 'connect', port, executable: process.execPath,
+    arguments: [join(import.meta.dirname, 'fake-engine.mjs'), String(port)],
+    healthTimeoutMs: 100,
+  }, quietLogger, dependencies({ detectProcesses: async () => { detected = true; return [] } }))
+  try {
+    const result = await controller.requestStart(true)
+    assert.equal(result.ok, false)
+    assert.equal(result.status.phase, 'offline')
+    assert.equal(controller.ownsProcess, false)
+    assert.equal(detected, false)
+  } finally { await controller.dispose(true) }
 })
 
 test('startup failures retain the engine output for the UI', async () => {

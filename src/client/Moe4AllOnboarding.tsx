@@ -18,7 +18,7 @@ export function Moe4AllOnboarding({ scope, complete, openSection }: Props): Reac
   const config = snapshot.value
   const needsSetup = config !== undefined
     && config.mode !== 'connect'
-    && (config.executable?.trim() === '' || (config.arguments?.length ?? 0) === 0)
+    && ((config.executable ?? '').trim() === '' || (config.arguments?.length ?? 0) === 0)
 
   useEffect(() => {
     if (config === undefined) return

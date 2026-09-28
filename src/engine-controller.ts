@@ -1,11 +1,13 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { constants as fsConstants } from 'node:fs'
 import { access } from 'node:fs/promises'
-import { freemem, totalmem } from 'node:os'
+import { freemem, totalmem, networkInterfaces } from 'node:os'
 import { basename, delimiter, dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import { createInterface, type Interface as ReadLineInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
+import { endpointFromConfig, isLoopback, validateEndpoint } from './connection.js'
+export { endpointFromConfig, validateEndpoint } from './connection.js'
 
 export type LaunchMode = 'connect' | 'prompt' | 'auto' | 'managed'
 export type EffectiveLaunchMode = Exclude<LaunchMode, 'managed'>
@@ -77,6 +79,7 @@ export interface StartupPrompt {
 }
 
 export interface EngineRuntimeStatus {
+  owned?: boolean
   phase: EnginePhase
   endpoint: string
   mode: EffectiveLaunchMode
@@ -152,39 +155,9 @@ export function effectiveLaunchMode(mode: LaunchMode | undefined): EffectiveLaun
   return mode === 'managed' ? 'prompt' : mode ?? DEFAULT_CONFIG.mode
 }
 
-function isLoopback(hostname: string): boolean {
-  const host = hostname.toLowerCase()
-  return host === 'localhost' || host === '::1' || host === '[::1]' || /^127(?:\.|$)/.test(host)
-}
-
-function urlHost(host: string): string {
-  const trimmed = host.trim()
-  return trimmed.includes(':') && !trimmed.startsWith('[') ? `[${trimmed}]` : trimmed
-}
-
-export function endpointFromConfig(config: EngineConfig): string {
-  const explicit = config.endpoint?.trim()
-  if (explicit) return explicit
-  const protocol = config.protocol ?? DEFAULT_CONFIG.protocol
-  const host = config.host ?? DEFAULT_CONFIG.host
-  const port = config.port ?? DEFAULT_CONFIG.port
-  const rawPath = config.apiBasePath ?? DEFAULT_CONFIG.apiBasePath
-  const path = rawPath.startsWith('/') ? rawPath : `/${rawPath}`
-  return `${protocol}://${urlHost(host)}:${port}${path}`
-}
-
-export function validateEndpoint(endpoint: string, allowRemoteEndpoint = false): URL {
-  const parsed = new URL(endpoint)
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error(`MoE4All endpoint must use http or https: ${endpoint}`)
-  }
-  if (parsed.username || parsed.password) {
-    throw new Error('MoE4All endpoint must not contain credentials')
-  }
-  if (!allowRemoteEndpoint && !isLoopback(parsed.hostname)) {
-    throw new Error(`MoE4All endpoint is not loopback: ${parsed.hostname}`)
-  }
-  return parsed
+function isLocalAddress(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, '')
+  return isLoopback(host) || Object.values(networkInterfaces()).some(interfaces => interfaces?.some(item => item.address === host))
 }
 
 function healthUrl(endpoint: URL): URL {
@@ -619,8 +592,14 @@ export class EngineController {
   }
 
   statusSnapshot(): EngineRuntimeStatus {
-    return structuredClone(this.currentStatus)
+    return structuredClone({ ...this.currentStatus, ...this.startupDetails(), owned: this.ownsProcess })
   }
+
+  get ownsProcess(): boolean {
+    return this.child !== undefined && this.child.exitCode === null && this.child.signalCode === null
+  }
+
+  get isStarting(): boolean { return this.startPromise !== undefined }
 
   async refreshStatus(): Promise<EngineRuntimeStatus> {
     if (await probeHealth(
@@ -640,7 +619,10 @@ export class EngineController {
     if (this.currentStatus.phase === 'starting' || this.currentStatus.phase === 'resource-warning' || this.currentStatus.phase === 'error') {
       return this.statusSnapshot()
     }
-    if (!isLoopback(this.endpoint.hostname)) {
+    if (effectiveLaunchMode(this.config.mode) === 'connect') {
+      return this.setStatus({ phase: 'offline', ready: false, canStart: false, message: 'The configured service is not reachable.' })
+    }
+    if (!isLocalAddress(this.endpoint.hostname)) {
       return this.setStatus({
         phase: 'offline',
         ready: false,
@@ -675,8 +657,8 @@ export class EngineController {
     })
   }
 
-  ensureReady(): Promise<boolean> {
-    this.initialPromise ??= this.initialize()
+  ensureReady(allowAutomatic = true): Promise<boolean> {
+    this.initialPromise ??= this.initialize(allowAutomatic)
     return this.initialPromise
   }
 
@@ -703,13 +685,13 @@ export class EngineController {
     return run
   }
 
-  private async initialize(): Promise<boolean> {
+  private async initialize(allowAutomatic: boolean): Promise<boolean> {
     const status = await this.refreshStatus()
     if (status.ready) {
       this.logger.info(`MoE4All engine connected at ${this.endpoint.origin}`)
       return true
     }
-    if (effectiveLaunchMode(this.config.mode) !== 'auto') {
+    if (!allowAutomatic || effectiveLaunchMode(this.config.mode) !== 'auto') {
       this.logger.info(`MoE4All engine is waiting at ${this.endpoint.origin}; launch mode is ${effectiveLaunchMode(this.config.mode)}`)
       return false
     }
@@ -773,7 +755,8 @@ export class EngineController {
   private async start(force: boolean): Promise<EngineStartResult> {
     const status = await this.refreshStatus()
     if (status.ready) return { ok: true, status }
-    if (!isLoopback(this.endpoint.hostname)) {
+    if (effectiveLaunchMode(this.config.mode) === 'connect') return { ok: false, status }
+    if (!isLocalAddress(this.endpoint.hostname)) {
       return {
         ok: false,
         status: this.setStatus({
@@ -910,7 +893,7 @@ export class EngineController {
     this.logger.info(`Starting MoE4All engine: ${executable}`)
     this.child = spawn(executable, arguments_, {
       cwd: this.config.workingDirectory || undefined,
-      env: process.env,
+      env: { ...process.env, ...(this.config.apiKeyEnv && process.env[this.config.apiKeyEnv] ? { INFR_API_KEY: process.env[this.config.apiKeyEnv] } : {}) },
       shell: false,
       windowsHide: true,
       detached: persistent,
@@ -949,7 +932,7 @@ export class EngineController {
     return this.child
   }
 
-  async dispose(): Promise<void> {
+  async dispose(forceStop = false): Promise<void> {
     if (this.stopping) return
     this.stopping = true
     this.abort.abort()
@@ -958,7 +941,7 @@ export class EngineController {
 
     const child = this.child
     this.child = undefined
-    if (child === undefined || !this.config.stopOnUnload) return
+    if (child === undefined || (!forceStop && !this.config.stopOnUnload)) return
     if (child.exitCode !== null || child.signalCode !== null) return
 
     child.kill()

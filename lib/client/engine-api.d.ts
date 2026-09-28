@@ -16,9 +16,11 @@ export interface ModelCatalogResponse {
     capabilities: {
         nativeFilePicker: boolean;
     };
+    defaultDirectory: string;
 }
 export declare function fetchEngineStatus(): Promise<EngineControlStatus>;
 export declare function startEngine(force?: boolean): Promise<StartResponse>;
+export declare function stopEngine(): Promise<StartResponse>;
 export declare function fetchReleaseStatus(force?: boolean): Promise<ReleaseResponse>;
 export declare function installLatestEngine(): Promise<void>;
 export declare function installLocalEngine(path: string): Promise<void>;

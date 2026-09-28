@@ -17,6 +17,7 @@ export interface ModelCatalogResponse {
   models: RecommendedModel[]
   download: ModelDownloadProgress
   capabilities: { nativeFilePicker: boolean }
+  defaultDirectory: string
 }
 
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
@@ -43,6 +44,10 @@ export function startEngine(force = false): Promise<StartResponse> {
     method: 'POST',
     body: JSON.stringify({ force }),
   })
+}
+
+export function stopEngine(): Promise<StartResponse> {
+  return json('/api/moe4all/stop', { method: 'POST', body: '{}' })
 }
 
 export function fetchReleaseStatus(force = false): Promise<ReleaseResponse> {

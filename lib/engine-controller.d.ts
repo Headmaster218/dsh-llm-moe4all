@@ -1,3 +1,4 @@
+export { endpointFromConfig, validateEndpoint } from './connection.js';
 export type LaunchMode = 'connect' | 'prompt' | 'auto' | 'managed';
 export type EffectiveLaunchMode = Exclude<LaunchMode, 'managed'>;
 export type EnginePhase = 'checking' | 'ready' | 'offline' | 'starting' | 'resource-warning' | 'missing-executable' | 'missing-arguments' | 'duplicate-process' | 'error';
@@ -52,6 +53,7 @@ export interface StartupPrompt {
     resources?: ResourceSnapshot;
 }
 export interface EngineRuntimeStatus {
+    owned?: boolean;
     phase: EnginePhase;
     endpoint: string;
     mode: EffectiveLaunchMode;
@@ -102,8 +104,6 @@ type ResolvedEngineConfig = {
     [Key in keyof Required<EngineConfig>]: Required<EngineConfig>[Key];
 };
 export declare function effectiveLaunchMode(mode: LaunchMode | undefined): EffectiveLaunchMode;
-export declare function endpointFromConfig(config: EngineConfig): string;
-export declare function validateEndpoint(endpoint: string, allowRemoteEndpoint?: boolean): URL;
 export declare function probeHealth(endpoint: URL, timeoutMs: number, apiKeyEnv?: string, parentSignal?: AbortSignal): Promise<boolean>;
 export declare function resolveEngineExecutable(config: EngineConfig): Promise<string | undefined>;
 export declare function parseTasklistCsv(output: string): RunningProcess[];
@@ -126,8 +126,10 @@ export declare class EngineController {
     private adjustedRamBudgetBytes;
     constructor(config: EngineConfig, logger?: EngineLogger, dependencies?: Partial<EngineControllerDependencies>);
     statusSnapshot(): EngineRuntimeStatus;
+    get ownsProcess(): boolean;
+    get isStarting(): boolean;
     refreshStatus(): Promise<EngineRuntimeStatus>;
-    ensureReady(): Promise<boolean>;
+    ensureReady(allowAutomatic?: boolean): Promise<boolean>;
     requestStart(force?: boolean): Promise<EngineStartResult>;
     private initialize;
     private setStatus;
@@ -138,7 +140,6 @@ export declare class EngineController {
     private resourceAssessment;
     private start;
     private launch;
-    dispose(): Promise<void>;
+    dispose(forceStop?: boolean): Promise<void>;
 }
-export {};
 //# sourceMappingURL=engine-controller.d.ts.map

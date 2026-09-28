@@ -1,4 +1,12 @@
-export type Moe4AllLocaleKey =
+import { workspaceEn, workspaceZh, type WorkspaceKey } from './workspace-copy.js'
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap {
+    'settings.moe4all': Moe4AllLocaleKey
+  }
+}
+
+export type Moe4AllLocaleKey = WorkspaceKey
   | 'nav' | 'title' | 'loading' | 'unavailable' | 'readOnly'
   | 'saved' | 'unsaved' | 'saving' | 'save' | 'revert' | 'working'
   | 'mode' | 'connect' | 'prompt' | 'auto' | 'connectHint' | 'promptHint' | 'autoHint'
@@ -41,6 +49,7 @@ export type Moe4AllLocaleKey =
   | 'useModel' | 'modelDirectoryRequired'
 
 export const en: Record<Moe4AllLocaleKey, string> = {
+  ...workspaceEn,
   nav: 'MoE4All',
   engineVersion: 'Engine version',
   engineNotInstalled: 'No managed engine selected',
@@ -214,6 +223,7 @@ export const en: Record<Moe4AllLocaleKey, string> = {
 }
 
 export const zh: Record<Moe4AllLocaleKey, string> = {
+  ...workspaceZh,
   nav: 'MoE4All',
   engineVersion: '引擎版本',
   engineNotInstalled: '未选择托管引擎',

@@ -15,6 +15,7 @@ test('first-run setup keeps conservative engine defaults automatic', () => {
     mtp: false,
   }), [
     'serve', '--addr', '127.0.0.1:8080', '--parallel', '1', '--ctx', '163840', '--max-new', '102400',
+    '--set', 'device.auto_profile=conservative', '--set', 'spec.mtp=false',
     '--set', 'kv.session_cache_dir=',
     'D:\\Models\\model.gguf',
   ])
@@ -67,6 +68,7 @@ test('first-run setup strips pasted quotes and includes optional services and KV
     sessionCache: { directory: 'kv-sessions', maxSize: '10g', idleSeconds: 90, ttlHours: 24 },
   }), [
     'serve', '--addr', '127.0.0.1:8080', '--parallel', '2', '--ctx', '32768', '--max-new', '8192',
+    '--set', 'device.auto_profile=conservative', '--set', 'spec.mtp=false',
     '--mmproj', 'D:\\Models\\mmproj.gguf', '--embedding-model', 'D:\\Models\\embed.gguf', '--embedding-idle-timeout', '60',
     '--set', 'kv.type_k=q8_0', '--set', 'kv.type_v=q8_0', '--set', 'kv.session_cache_dir=kv-sessions',
     '--set', 'kv.session_idle_secs=90', '--set', 'kv.session_cache_max=10g', '--set', 'kv.session_cache_ttl_hours=24',

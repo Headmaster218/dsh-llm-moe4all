@@ -21,6 +21,7 @@ export interface EngineSetupValues {
   profile: EngineAutoProfile
   mtp: boolean
   sessionCache?: SessionCacheSetup
+  extraArguments?: string[]
 }
 
 export interface ParsedEngineArguments {
@@ -57,23 +58,60 @@ function nonNegativeInteger(value: number, message: string): void {
 }
 
 function optionValue(arguments_: string[], option: string): string | undefined {
-  const index = arguments_.lastIndexOf(option)
-  return index < 0 ? undefined : arguments_[index + 1]
+  let result: string | undefined
+  for (let index = 0; index < arguments_.length; index++) {
+    if (arguments_[index] === option) result = arguments_[++index]
+    else if (arguments_[index]!.startsWith(`${option}=`)) result = arguments_[index]!.slice(option.length + 1)
+  }
+  return result
 }
 
 function setValue(arguments_: string[], path: string): string | undefined {
+  let result: string | undefined
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index]!
     if (argument === '--set') {
       const value = arguments_[index + 1]
-      if (value?.startsWith(`${path}=`)) return value.slice(path.length + 1)
+      if (value?.startsWith(`${path}=`)) result = value.slice(path.length + 1)
       index += 1
       continue
     }
     const inline = /^--set=(.+)$/u.exec(argument)?.[1]
-    if (inline?.startsWith(`${path}=`)) return inline.slice(path.length + 1)
+    if (inline?.startsWith(`${path}=`)) result = inline.slice(path.length + 1)
   }
-  return undefined
+  return result
+}
+
+const managedOptions = new Set(['--addr', '--parallel', '--ctx', '--max-new', '--mmproj', '--embedding-model', '--embedding-idle-timeout'])
+const managedSettings = new Set(['device.auto_profile', 'spec.mtp', 'spec.draft', 'kv.session_cache_dir', 'kv.session_idle_secs', 'kv.session_cache_max', 'kv.session_cache_ttl_hours'])
+
+export function modelArgument(arguments_: string[]): string {
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const argument = arguments_[index]!
+    if (argument.startsWith('-')) {
+      if (!argument.includes('=') && !['--think', '--no-think', '--help', '--version'].includes(argument)) index += 1
+    } else if (/\.gguf$/iu.test(normalizeSetupPath(argument))) return normalizeSetupPath(argument)
+  }
+  return ''
+}
+
+export function unmanagedArguments(arguments_: string[]): string[] {
+  const model = modelArgument(arguments_)
+  const result: string[] = []
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const argument = arguments_[index]!
+    if (argument === 'serve' || normalizeSetupPath(argument) === model) continue
+    const [option] = argument.split('=', 1)
+    if (managedOptions.has(option!)) {
+      if (!argument.includes('=')) index += 1
+      continue
+    }
+    if (option === '--set') {
+      const entry = argument.startsWith('--set=') ? argument.slice(6) : arguments_[++index] ?? ''
+      if (!managedSettings.has(entry.split('=', 1)[0]!)) result.push('--set', entry)
+    } else result.push(argument)
+  }
+  return result
 }
 
 function integer(value: string | undefined, fallback: number): number {
@@ -83,7 +121,7 @@ function integer(value: string | undefined, fallback: number): number {
 
 export function parseEngineArguments(arguments_: string[]): ParsedEngineArguments {
   const sessionDirectory = setValue(arguments_, 'kv.session_cache_dir') ?? 'kv-sessions'
-  const model = [...arguments_].reverse().find(value => /\.gguf$/iu.test(value)) ?? ''
+  const model = modelArgument(arguments_)
   const mtpModel = setValue(arguments_, 'spec.draft') ?? ''
   return {
     model: model === mtpModel ? '' : model,
@@ -121,15 +159,15 @@ export function buildEngineArguments(values: EngineSetupValues): string[] {
 
   const arguments_: string[] = [
     'serve',
-    '--addr', `${host}:${values.port}`,
+    '--addr', `${host.includes(':') && !host.startsWith('[') ? `[${host}]` : host}:${values.port}`,
     '--parallel', String(values.parallel),
     '--ctx', String(values.contextWindow),
     '--max-new', String(values.maxTokens),
   ]
-  if (values.profile === 'aggressive') arguments_.push('--set', 'device.auto_profile=aggressive')
+  arguments_.push('--set', `device.auto_profile=${values.profile}`, '--set', `spec.mtp=${values.mtp}`)
   if (values.mtp) {
     if (mtpModel === '') throw new Error('An MTP head GGUF path is required when MTP is enabled.')
-    arguments_.push('--set', 'spec.mtp=true', '--set', `spec.draft=${mtpModel}`)
+    arguments_.push('--set', `spec.draft=${mtpModel}`)
   }
   if (visionModel !== '') arguments_.push('--mmproj', visionModel)
   if (embeddingModel !== '') {
@@ -157,6 +195,7 @@ export function buildEngineArguments(values: EngineSetupValues): string[] {
   } else {
     arguments_.push('--set', 'kv.session_cache_dir=')
   }
+  arguments_.push(...(values.extraArguments ?? []))
   arguments_.push(model)
   return arguments_
 }

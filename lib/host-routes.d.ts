@@ -7,6 +7,7 @@ import type { DiscoveredModel } from './model-provider.js';
 export declare const ENGINE_PATHS: {
     readonly status: "/api/moe4all/status";
     readonly start: "/api/moe4all/start";
+    readonly stop: "/api/moe4all/stop";
     readonly release: "/api/moe4all/release";
     readonly install: "/api/moe4all/install";
     readonly cancelInstall: "/api/moe4all/install-cancel";
@@ -22,12 +23,16 @@ export declare const ENGINE_PATHS: {
 };
 export interface EngineControlStatus extends EngineRuntimeStatus {
     models: DiscoveredModel[];
+    pendingChanges?: boolean;
 }
 export interface EngineRuntimeAccess {
     controller(): EngineController | undefined;
     models(): DiscoveredModel[];
     refreshModels(): Promise<void>;
     configuredExecutable(): string;
+    pendingChanges?(): boolean;
+    prepareStart?(): Promise<void>;
+    stop?(): Promise<void>;
     releases: EngineReleaseManager;
     downloads: ModelDownloadManager;
 }
