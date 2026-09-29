@@ -63,9 +63,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function authorizationHeader(apiKeyEnv: string): Record<string, string> {
-  if (!apiKeyEnv) return {}
-  const value = process.env[apiKeyEnv]
+function authorizationHeader(apiKeyEnv: string, apiKey?: string): Record<string, string> {
+  if (!apiKeyEnv && !apiKey) return {}
+  const value = apiKey ?? process.env[apiKeyEnv]
   return value ? { authorization: `Bearer ${value}` } : {}
 }
 
@@ -77,12 +77,13 @@ export async function discoverModels(
   endpoint: URL,
   config: ModelProviderConfig = {},
   parentSignal?: AbortSignal,
+  apiKey?: string,
 ): Promise<DiscoveredModel[]> {
   const timeout = AbortSignal.timeout(config.modelDiscoveryTimeoutMs ?? DEFAULTS.modelDiscoveryTimeoutMs)
   const signal = parentSignal === undefined ? timeout : AbortSignal.any([parentSignal, timeout])
   const url = new URL('models', endpoint.href.endsWith('/') ? endpoint.href : `${endpoint.href}/`)
   const response = await fetch(url, {
-    headers: authorizationHeader(config.apiKeyEnv ?? ''),
+    headers: authorizationHeader(config.apiKeyEnv ?? '', apiKey),
     signal,
   })
   if (!response.ok) throw new Error(`model discovery returned HTTP ${response.status}`)
@@ -177,6 +178,7 @@ export class ModelProviderBridge {
     private readonly endpoint: URL,
     private readonly config: ModelProviderConfig,
     private readonly logger: EngineLogger,
+    private readonly resolveApiKey: () => Promise<string | undefined> = async () => undefined,
   ) {}
 
   async run(): Promise<void> {
@@ -213,7 +215,12 @@ export class ModelProviderBridge {
     try {
       const current = this.settings.get(PI_AI_NAMESPACE)
       if (!isRecord(current)) throw new Error('llm-pi-ai settings are not active yet')
-      const models = await discoverModels(this.endpoint, this.config, this.abort.signal)
+      const models = await discoverModels(
+        this.endpoint,
+        this.config,
+        this.abort.signal,
+        await this.resolveApiKey(),
+      )
       const providers = isRecord(current.providers) ? current.providers : {}
       const profile = mergeProviderProfile(providers.moe4all, providerProfile(this.endpoint, models, this.config))
       const signature = JSON.stringify(profile)

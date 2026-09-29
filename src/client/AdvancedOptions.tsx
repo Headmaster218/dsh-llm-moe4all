@@ -2,6 +2,7 @@ import { Code2, Cpu, Database, Network, SlidersHorizontal, Wrench } from 'lucide
 import type { Workspace } from './use-workspace.js'
 import { argumentValue, composeEditor, setArgument, parseExtraArguments } from './workspace-model.js'
 import { Disclosure, Field, Toggle, type Translate } from './workspace-ui.js'
+import { ApiKeyField } from './ApiKeyField.js'
 
 function ExtraArguments({ workspace: w, t }: { workspace: Workspace; t: Translate }) {
   const text = w.editor!.extraText ?? JSON.stringify(w.editor!.extras, null, 2)
@@ -188,13 +189,7 @@ export function AdvancedOptions({ workspace: w, t }: { workspace: Workspace; t: 
               onChange={(event) => w.config({ port: Number(event.target.value) })}
             />
           </Field>
-          <Field label={t('apiKeyEnv')} help={t('apiKeyHelp')} className="m4a-span-2">
-            <input
-              value={e.config.apiKeyEnv ?? ''}
-              placeholder="INFR_API_KEY"
-              onChange={(event) => w.config({ apiKeyEnv: event.target.value })}
-            />
-          </Field>
+          <ApiKeyField workspace={w} t={t} />
         </div>
         <Toggle
           label={t('allowRemoteEndpoint')}

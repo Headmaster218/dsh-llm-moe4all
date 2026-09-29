@@ -41,19 +41,20 @@ interface ProviderProfile {
     };
     models: ProviderModelProfile[];
 }
-export declare function discoverModels(endpoint: URL, config?: ModelProviderConfig, parentSignal?: AbortSignal): Promise<DiscoveredModel[]>;
+export declare function discoverModels(endpoint: URL, config?: ModelProviderConfig, parentSignal?: AbortSignal, apiKey?: string): Promise<DiscoveredModel[]>;
 export declare function providerProfile(endpoint: URL, models: DiscoveredModel[], config?: ModelProviderConfig): ProviderProfile;
 export declare class ModelProviderBridge {
     private readonly settings;
     private readonly endpoint;
     private readonly config;
     private readonly logger;
+    private readonly resolveApiKey;
     private readonly abort;
     private signature;
     private lastError;
     private syncInFlight;
     private discovered;
-    constructor(settings: ProviderSettingsLike, endpoint: URL, config: ModelProviderConfig, logger: EngineLogger);
+    constructor(settings: ProviderSettingsLike, endpoint: URL, config: ModelProviderConfig, logger: EngineLogger, resolveApiKey?: () => Promise<string | undefined>);
     run(): Promise<void>;
     get models(): DiscoveredModel[];
     refreshNow(): Promise<void>;

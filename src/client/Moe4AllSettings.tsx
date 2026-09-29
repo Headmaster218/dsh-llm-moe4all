@@ -35,8 +35,10 @@ import type { Moe4AllLocaleKey } from './locales.js'
 import { useWorkspace, isInstalling } from './use-workspace.js'
 import { fileName, formatBytes, samePath } from './workspace-model.js'
 import { AdvancedOptions } from './AdvancedOptions.js'
+import { ApiKeyField } from './ApiKeyField.js'
 import { EngineVersionsView } from './EngineVersionsView.js'
 import { ModelLibraryView, roleIcon, roleLabel } from './ModelLibraryView.js'
+import { RuntimeMetrics } from './RuntimeStatus.js'
 import { Button, Dialog, Field, IconButton, Toggle, Transfer } from './workspace-ui.js'
 
 export interface Moe4AllSettingsInjected {
@@ -579,6 +581,21 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
                   ))}
                 </div>
               )}
+              <RuntimeMetrics status={w.status} t={t} />
+              {ready && (
+                <Field label={t('statusDisplay')}>
+                  <select
+                    value={e.config.statusDisplay ?? 'hover'}
+                    onChange={(event) => w.config({
+                      statusDisplay: event.target.value as 'hover' | 'always' | 'hidden',
+                    })}
+                  >
+                    <option value="hover">{t('displayHover')}</option>
+                    <option value="always">{t('displayAlways')}</option>
+                    <option value="hidden">{t('displayHidden')}</option>
+                  </select>
+                </Field>
+              )}
               {starting && (
                 <>
                   <progress aria-label={t('startingStatus')} />
@@ -621,13 +638,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
                   placeholder="http://127.0.0.1:8080/v1"
                 />
               </Field>
-              <Field label={t('apiKeyEnv')} help={t('apiKeyHelp')}>
-                <input
-                  value={e.config.apiKeyEnv ?? ''}
-                  placeholder="INFR_API_KEY"
-                  onChange={(event) => w.config({ apiKeyEnv: event.target.value })}
-                />
-              </Field>
+              <ApiKeyField workspace={w} t={t} />
               <Toggle
                 label={t('allowRemoteEndpoint')}
                 checked={e.config.allowRemoteEndpoint ?? false}
@@ -723,6 +734,17 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
           >
             {t('save')}
           </Button>
+          {owned && ready && (
+            <Button
+              kind="danger"
+              icon={Square}
+              disabled={w.disabled}
+              busy={w.working === 'stop'}
+              onClick={() => setConfirmation({ kind: 'stop' })}
+            >
+              {t('stopEngineAction')}
+            </Button>
+          )}
           <Button
             icon={!local ? Link : ready && !needsRestart ? Check : needsRestart ? RotateCcw : Play}
             kind="primary"

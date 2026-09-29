@@ -7,6 +7,7 @@ export declare const inject: string[];
 export declare const SETTINGS_NAMESPACE: import("@deepseek-ai/dsh-settings").SettingsNamespace;
 export interface Config extends EngineConfig, ModelProviderConfig {
     modelDirectory?: string;
+    statusDisplay?: 'hover' | 'always' | 'hidden';
 }
 export declare const Config: z<Schemastery.ObjectS<{
     mode: z<"connect" | "prompt" | "auto" | "managed", "connect" | "prompt" | "auto" | "managed">;
@@ -38,6 +39,7 @@ export declare const Config: z<Schemastery.ObjectS<{
     excludeModelNameContains: z<string[], string[]>;
     modelRefreshIntervalMs: z<number, number>;
     modelDiscoveryTimeoutMs: z<number, number>;
+    statusDisplay: z<"hover" | "always" | "hidden", "hover" | "always" | "hidden">;
 }>, Schemastery.ObjectT<{
     mode: z<"connect" | "prompt" | "auto" | "managed", "connect" | "prompt" | "auto" | "managed">;
     protocol: z<"http" | "https", "http" | "https">;
@@ -68,6 +70,7 @@ export declare const Config: z<Schemastery.ObjectS<{
     excludeModelNameContains: z<string[], string[]>;
     modelRefreshIntervalMs: z<number, number>;
     modelDiscoveryTimeoutMs: z<number, number>;
+    statusDisplay: z<"hover" | "always" | "hidden", "hover" | "always" | "hidden">;
 }>>;
 export declare function apply(ctx: Context, config: Config): () => Promise<void>;
 declare const plugin: {
@@ -103,6 +106,7 @@ declare const plugin: {
         excludeModelNameContains: z<string[], string[]>;
         modelRefreshIntervalMs: z<number, number>;
         modelDiscoveryTimeoutMs: z<number, number>;
+        statusDisplay: z<"hover" | "always" | "hidden", "hover" | "always" | "hidden">;
     }>, Schemastery.ObjectT<{
         mode: z<"connect" | "prompt" | "auto" | "managed", "connect" | "prompt" | "auto" | "managed">;
         protocol: z<"http" | "https", "http" | "https">;
@@ -133,6 +137,7 @@ declare const plugin: {
         excludeModelNameContains: z<string[], string[]>;
         modelRefreshIntervalMs: z<number, number>;
         modelDiscoveryTimeoutMs: z<number, number>;
+        statusDisplay: z<"hover" | "always" | "hidden", "hover" | "always" | "hidden">;
     }>>;
     apply: typeof apply;
 };

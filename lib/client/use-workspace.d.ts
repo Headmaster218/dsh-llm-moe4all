@@ -1,4 +1,5 @@
 import type { Config } from '../index.js';
+import type { ApiKeyStatus } from '../api-key.js';
 import type { EngineControlStatus } from '../host-routes.js';
 import type { EngineReleaseStatus, InstalledEngine } from '../engine-release.js';
 import type { ModelDownloadProgress, RecommendedModel } from '../model-download.js';
@@ -34,6 +35,7 @@ export declare function useWorkspace(props: Moe4AllSettingsProps): {
     download: ModelDownloadProgress;
     directory: string;
     nativePicker: boolean;
+    apiKey: ApiKeyStatus | null;
     working: string;
     scanning: boolean;
     error: string;
@@ -49,6 +51,8 @@ export declare function useWorkspace(props: Moe4AllSettingsProps): {
     launch: (force?: boolean, restart?: boolean) => Promise<boolean>;
     stop: () => Promise<boolean>;
     refresh: () => Promise<boolean>;
+    saveApiKey: (value: string) => Promise<boolean>;
+    regenerateApiKey: () => Promise<boolean>;
     selectEngine: (engine: InstalledEngine) => void;
     install: (localPath?: string) => Promise<void>;
     checkUpdates: () => Promise<boolean>;

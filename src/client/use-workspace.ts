@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Config } from '../index.js'
+import type { ApiKeyStatus } from '../api-key.js'
 import type { EngineControlStatus } from '../host-routes.js'
 import type { EngineReleaseStatus, InstalledEngine } from '../engine-release.js'
 import type { ModelDownloadProgress, RecommendedModel } from '../model-download.js'
@@ -23,6 +24,7 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
   const [library, setLibrary] = useState<LocalModelLibrary>({ directory: '', models: [] })
   const [download, setDownload] = useState<ModelDownloadProgress>({ stage: 'idle', downloadedBytes: 0 })
   const [defaultDirectory, setDefaultDirectory] = useState('')
+  const [apiKey, setApiKey] = useState<ApiKeyStatus | null>(null)
   const [nativePicker, setNativePicker] = useState(false)
   const [working, setWorking] = useState('')
   const [scanning, setScanning] = useState(false)
@@ -155,6 +157,9 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
         setDefaultDirectory(result.defaultDirectory)
       })
       .catch(report)
+    void api.fetchApiKey().then((value) => {
+      if (!disposed) setApiKey(value)
+    }).catch(report)
     return () => {
       mounted.current = false
       disposed = true
@@ -224,6 +229,16 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
       const next = await api.fetchEngineStatus()
       setStatus(next)
       setNotice(props.t(next.ready ? 'connectionOk' : 'connectionFailed'))
+    })
+  const saveApiKey = (value: string) =>
+    run('api-key', async () => {
+      setApiKey(await api.updateApiKey(value))
+      setNotice(props.t('apiKeySaved'))
+    })
+  const regenerateApiKey = () =>
+    run('api-key', async () => {
+      setApiKey(await api.regenerateApiKey())
+      setNotice(props.t('apiKeySaved'))
     })
 
   function selectEngine(engine: InstalledEngine) {
@@ -360,6 +375,7 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
     download,
     directory,
     nativePicker,
+    apiKey,
     working,
     scanning,
     error,
@@ -378,6 +394,8 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
     launch,
     stop,
     refresh,
+    saveApiKey,
+    regenerateApiKey,
     selectEngine,
     install,
     checkUpdates,

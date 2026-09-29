@@ -3,7 +3,8 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 
-import type { EngineController, EngineRuntimeStatus, EngineStartResult } from './engine-controller.js'
+import type { ApiKeyManager } from './api-key.js'
+import type { EngineConfig, EngineController, EngineRuntimeStatus, EngineStartResult } from './engine-controller.js'
 import type { EngineReleaseManager, EngineReleaseStatus } from './engine-release.js'
 import type { ModelDownloadManager } from './model-download.js'
 import type { DiscoveredModel } from './model-provider.js'
@@ -26,6 +27,7 @@ export const ENGINE_PATHS = {
   modelCatalog: '/api/moe4all/model-catalog',
   modelDownload: '/api/moe4all/model-download',
   cancelModelDownload: '/api/moe4all/model-download-cancel',
+  apiKey: '/api/moe4all/api-key',
 } as const
 
 export interface EngineControlStatus extends EngineRuntimeStatus {
@@ -42,6 +44,8 @@ export interface EngineRuntimeAccess {
   pendingChanges?(): boolean
   prepareStart?(): Promise<void>
   stop?(): Promise<void>
+  apiKeys: ApiKeyManager
+  config(): EngineConfig
   releases: EngineReleaseManager
   downloads: ModelDownloadManager
 }
@@ -352,6 +356,38 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
     writeJson(response, 200, { ok: true, download: access.downloads.cancel() })
   }
 
+  const handleApiKey = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    if (!fenced(request, response)) return
+    const config = access.config()
+    if (request.method === 'GET') {
+      writeJson(response, 200, { ok: true, ...await access.apiKeys.ensure(config) })
+      return
+    }
+    if (!method(request, response, 'POST')) return
+    if (access.controller()?.ownsProcess && (await access.apiKeys.ensure(config)).required) {
+      writeJson(response, 409, {
+        ok: false,
+        message: 'Stop the managed engine before changing its API key.',
+      })
+      return
+    }
+    const body = await readJson(request)
+    if (body === undefined
+      || (body.value !== undefined && typeof body.value !== 'string')
+      || (body.regenerate !== undefined && typeof body.regenerate !== 'boolean')) {
+      writeJson(response, 400, { ok: false, code: 'invalid-api-key' })
+      return
+    }
+    try {
+      const status = body.regenerate === true
+        ? await access.apiKeys.regenerate(config)
+        : await access.apiKeys.set(config, typeof body.value === 'string' ? body.value : '')
+      writeJson(response, 200, { ok: true, ...status })
+    } catch (error) {
+      writeJson(response, 400, { ok: false, message: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
   return [
     { kind: 'exact', path: ENGINE_PATHS.status, handler: handleStatus },
     { kind: 'exact', path: ENGINE_PATHS.start, handler: handleStart },
@@ -368,5 +404,6 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
     { kind: 'exact', path: ENGINE_PATHS.modelCatalog, handler: handleModelCatalog },
     { kind: 'exact', path: ENGINE_PATHS.modelDownload, handler: handleModelDownload },
     { kind: 'exact', path: ENGINE_PATHS.cancelModelDownload, handler: handleCancelModelDownload },
+    { kind: 'exact', path: ENGINE_PATHS.apiKey, handler: handleApiKey },
   ]
 }

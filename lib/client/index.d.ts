@@ -12,6 +12,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
             kind: 'list';
             scope: 'root';
         };
+        'conversation.composer.dock': {
+            kind: 'list';
+            scope: 'session';
+        };
     }
 }
 //# sourceMappingURL=index.d.ts.map

@@ -1,6 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver';
-import type { EngineController, EngineRuntimeStatus } from './engine-controller.js';
+import type { ApiKeyManager } from './api-key.js';
+import type { EngineConfig, EngineController, EngineRuntimeStatus } from './engine-controller.js';
 import type { EngineReleaseManager } from './engine-release.js';
 import type { ModelDownloadManager } from './model-download.js';
 import type { DiscoveredModel } from './model-provider.js';
@@ -20,6 +21,7 @@ export declare const ENGINE_PATHS: {
     readonly modelCatalog: "/api/moe4all/model-catalog";
     readonly modelDownload: "/api/moe4all/model-download";
     readonly cancelModelDownload: "/api/moe4all/model-download-cancel";
+    readonly apiKey: "/api/moe4all/api-key";
 };
 export interface EngineControlStatus extends EngineRuntimeStatus {
     models: DiscoveredModel[];
@@ -34,6 +36,8 @@ export interface EngineRuntimeAccess {
     pendingChanges?(): boolean;
     prepareStart?(): Promise<void>;
     stop?(): Promise<void>;
+    apiKeys: ApiKeyManager;
+    config(): EngineConfig;
     releases: EngineReleaseManager;
     downloads: ModelDownloadManager;
 }

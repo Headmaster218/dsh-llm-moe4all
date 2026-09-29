@@ -7,6 +7,7 @@ import type { Config } from '../index.js'
 import { EngineStartupOverlay } from './EngineStartupOverlay.js'
 import { Moe4AllOnboarding } from './Moe4AllOnboarding.js'
 import { Moe4AllSettings, type Moe4AllSettingsInjected } from './Moe4AllSettings.js'
+import { RuntimeStatusDock } from './RuntimeStatus.js'
 import { en, zh } from './locales.js'
 import { styles } from './styles.js'
 
@@ -64,6 +65,16 @@ export function apply(ctx: ClientContext): void {
     scope,
     t: ctx.locale.bind('settings.moe4all'),
   })))
+
+  ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
+    name: 'conversation.composer.dock',
+    id: 'moe4all-runtime',
+    order: -20,
+    label: () => 'MoE4All',
+  }, () => createElement(RuntimeStatusDock, {
+    scope,
+    t: ctx.locale.bind('settings.moe4all'),
+  })))
 }
 
 const plugin = { inject, apply }
@@ -73,5 +84,6 @@ export default plugin
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     'shell.overlay': { kind: 'list'; scope: 'root' }
+    'conversation.composer.dock': { kind: 'list'; scope: 'session' }
   }
 }

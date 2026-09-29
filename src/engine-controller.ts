@@ -7,6 +7,7 @@ import { createInterface, type Interface as ReadLineInterface } from 'node:readl
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { endpointFromConfig, isLoopback, validateEndpoint } from './connection.js'
+import { configuredSlots, RuntimeMetricsTracker, type EngineRuntimeMetrics } from './runtime-metrics.js'
 export { endpointFromConfig, validateEndpoint } from './connection.js'
 
 export type LaunchMode = 'connect' | 'prompt' | 'auto' | 'managed'
@@ -92,6 +93,7 @@ export interface EngineRuntimeStatus {
   processes?: RunningProcess[]
   startupStartedAt?: string
   startupLines?: string[]
+  metrics?: EngineRuntimeMetrics
 }
 
 export interface EngineStartResult {
@@ -102,6 +104,7 @@ export interface EngineStartResult {
 export interface EngineControllerDependencies {
   detectProcesses(processNames: string[]): Promise<RunningProcess[]>
   probeResources(executable: string, config: EngineConfig): Promise<ResourceSnapshot>
+  resolveApiKey(): Promise<string | undefined>
 }
 
 export const DEFAULT_CONFIG = {
@@ -163,16 +166,28 @@ function healthUrl(endpoint: URL): URL {
   return new URL('/health', endpoint.origin)
 }
 
-function authorizationHeader(apiKeyEnv: string): Record<string, string> {
-  if (!apiKeyEnv) return {}
-  const value = process.env[apiKeyEnv]
-  return value ? { authorization: `Bearer ${value}` } : {}
+function authorizationHeaderValue(apiKey?: string): Record<string, string> {
+  return apiKey ? { authorization: `Bearer ${apiKey}` } : {}
 }
 
 export async function probeHealth(
   endpoint: URL,
   timeoutMs: number,
   apiKeyEnv = '',
+  parentSignal?: AbortSignal,
+): Promise<boolean> {
+  return probeHealthWithApiKey(
+    endpoint,
+    timeoutMs,
+    apiKeyEnv ? process.env[apiKeyEnv] : undefined,
+    parentSignal,
+  )
+}
+
+async function probeHealthWithApiKey(
+  endpoint: URL,
+  timeoutMs: number,
+  apiKey?: string,
   parentSignal?: AbortSignal,
 ): Promise<boolean> {
   const timeoutSignal = AbortSignal.timeout(timeoutMs)
@@ -183,7 +198,7 @@ export async function probeHealth(
   try {
     const response = await fetch(healthUrl(endpoint), {
       method: 'GET',
-      headers: authorizationHeader(apiKeyEnv),
+      headers: authorizationHeaderValue(apiKey),
       signal,
     })
     return response.ok
@@ -477,6 +492,7 @@ function cleanOutputLine(line: string): string {
 const DEFAULT_DEPENDENCIES: EngineControllerDependencies = {
   detectProcesses: detectRunningEngines,
   probeResources: probeEngineResources,
+  resolveApiKey: async () => undefined,
 }
 
 function pipeLines(stream: NodeJS.ReadableStream | null, write: (line: string) => void): ReadLineInterface | undefined {
@@ -518,6 +534,7 @@ export class EngineController {
   private currentStatus: EngineRuntimeStatus
   private startupStartedAt: string | undefined
   private startupLines: string[] = []
+  private readonly runtimeMetrics: RuntimeMetricsTracker
 
   constructor(
     config: EngineConfig,
@@ -525,8 +542,16 @@ export class EngineController {
     dependencies: Partial<EngineControllerDependencies> = {},
   ) {
     this.config = resolvedConfig(config)
+    this.runtimeMetrics = new RuntimeMetricsTracker(configuredSlots(this.config.arguments))
     this.endpoint = validateEndpoint(endpointFromConfig(this.config), this.config.allowRemoteEndpoint)
-    this.dependencies = { ...DEFAULT_DEPENDENCIES, ...dependencies }
+    this.dependencies = {
+      ...DEFAULT_DEPENDENCIES,
+      resolveApiKey: async () => {
+        const ref = this.config.apiKeyEnv
+        return ref ? process.env[ref] : undefined
+      },
+      ...dependencies,
+    }
     this.currentStatus = {
       phase: 'checking',
       endpoint: this.endpoint.href.replace(/\/$/u, ''),
@@ -547,10 +572,10 @@ export class EngineController {
   get isStarting(): boolean { return this.startPromise !== undefined }
 
   async refreshStatus(): Promise<EngineRuntimeStatus> {
-    if (await probeHealth(
+    if (await probeHealthWithApiKey(
       this.endpoint,
       this.config.healthTimeoutMs,
-      this.config.apiKeyEnv,
+      await this.dependencies.resolveApiKey(),
       this.abort.signal,
     )) {
       return this.setStatus({
@@ -652,16 +677,18 @@ export class EngineController {
     return this.statusSnapshot()
   }
 
-  private startupDetails(): Pick<EngineRuntimeStatus, 'startupStartedAt' | 'startupLines'> {
+  private startupDetails(): Pick<EngineRuntimeStatus, 'startupStartedAt' | 'startupLines' | 'metrics'> {
     return {
       ...(this.startupStartedAt === undefined ? {} : { startupStartedAt: this.startupStartedAt }),
       ...(this.startupLines.length === 0 ? {} : { startupLines: [...this.startupLines] }),
+      metrics: this.runtimeMetrics.snapshot(),
     }
   }
 
   private appendStartupLine(line: string): void {
     const cleaned = cleanOutputLine(line)
     if (cleaned === '') return
+    this.runtimeMetrics.ingest(cleaned)
     this.startupLines.push(cleaned)
     if (this.startupLines.length > 120) this.startupLines.splice(0, this.startupLines.length - 120)
     if (this.currentStatus.phase === 'starting') {
@@ -788,6 +815,7 @@ export class EngineController {
 
     this.startupStartedAt = new Date().toISOString()
     this.startupLines = []
+    this.runtimeMetrics.reset()
     this.setStatus({
       phase: 'starting',
       ready: false,
@@ -797,17 +825,18 @@ export class EngineController {
       ...this.startupDetails(),
       message: 'MoE4All is starting.',
     })
-    const child = this.launch(executable, this.config.arguments)
+    const apiKey = await this.dependencies.resolveApiKey()
+    const child = this.launch(executable, this.config.arguments, apiKey)
     const deadline = Date.now() + this.config.startupTimeoutMs
     while (Date.now() < deadline) {
       if (this.abort.signal.aborted) return { ok: false, status: this.statusSnapshot() }
       if (child.exitCode !== null || child.signalCode !== null) {
         throw new Error(`MoE4All engine exited before becoming ready (code ${String(child.exitCode)}).`)
       }
-      if (await probeHealth(
+      if (await probeHealthWithApiKey(
         this.endpoint,
         this.config.healthTimeoutMs,
-        this.config.apiKeyEnv,
+        apiKey,
         this.abort.signal,
       )) {
         this.logger.info(`MoE4All engine ready at ${this.endpoint.origin}`)
@@ -826,13 +855,13 @@ export class EngineController {
     throw new Error(`MoE4All engine did not become healthy within ${this.config.startupTimeoutMs} ms`)
   }
 
-  private launch(executable: string, arguments_: string[]): ChildProcess {
+  private launch(executable: string, arguments_: string[], apiKey?: string): ChildProcess {
     const persistent = !this.config.stopOnUnload
     const captureOutput = !persistent
     this.logger.info(`Starting MoE4All engine: ${executable}`)
     this.child = spawn(executable, arguments_, {
       cwd: this.config.workingDirectory || undefined,
-      env: { ...process.env, ...(this.config.apiKeyEnv && process.env[this.config.apiKeyEnv] ? { INFR_API_KEY: process.env[this.config.apiKeyEnv] } : {}) },
+      env: { ...process.env, ...(apiKey ? { INFR_API_KEY: apiKey } : {}) },
       shell: false,
       windowsHide: true,
       detached: persistent,

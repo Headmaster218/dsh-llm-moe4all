@@ -1,8 +1,10 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 
+import { ApiKeyManager, DEFAULT_API_KEY_REF } from './api-key.js'
 import { EngineController, endpointFromConfig, validateEndpoint, type EngineConfig } from './engine-controller.js'
 import { EngineReleaseManager } from './engine-release.js'
 import { makeEngineRoutes } from './host-routes.js'
@@ -10,11 +12,12 @@ import { ModelDownloadManager } from './model-download.js'
 import { ModelProviderBridge, type ModelProviderConfig, type ProviderSettingsLike } from './model-provider.js'
 
 export const name = 'moe4all-engine'
-export const inject = ['settings']
+export const inject = ['settings', 'credentials']
 export const SETTINGS_NAMESPACE = settingsNamespace('moe4all-engine')
 
 export interface Config extends EngineConfig, ModelProviderConfig {
   modelDirectory?: string
+  statusDisplay?: 'hover' | 'always' | 'hidden'
 }
 
 export const Config = z.object({
@@ -27,7 +30,7 @@ export const Config = z.object({
   executable: z.string().role('path').default(''),
   arguments: z.array(z.string()).default([]),
   workingDirectory: z.string().role('path').default(''),
-  apiKeyEnv: z.string().default(''),
+  apiKeyEnv: z.string().default(DEFAULT_API_KEY_REF),
   allowRemoteEndpoint: z.boolean().default(false),
   processNames: z.array(z.string()).default(['infr.exe', 'moe4all.exe', 'infr', 'moe4all']),
   minimumFreeRamFraction: z.number().min(0).max(1).default(0.5),
@@ -47,6 +50,7 @@ export const Config = z.object({
   excludeModelNameContains: z.array(z.string()).default(['embed', 'embedding']),
   modelRefreshIntervalMs: z.number().step(1).min(1_000).default(15_000),
   modelDiscoveryTimeoutMs: z.number().step(1).min(100).default(3_000),
+  statusDisplay: z.union(['hover', 'always', 'hidden']).default('hover'),
 })
 
 interface ActiveRuntime {
@@ -56,9 +60,28 @@ interface ActiveRuntime {
   discovery: Promise<void>
 }
 
-function startRuntime(ctx: Context, settings: ProviderSettingsLike, config: Config, allowAutomatic = true): ActiveRuntime {
-  const controller = new EngineController(config, ctx.logger)
-  const provider = new ModelProviderBridge(settings, controller.endpoint, config, ctx.logger)
+function normalizedConfig(config: Config): Config {
+  return { ...config, apiKeyEnv: config.apiKeyEnv?.trim() || DEFAULT_API_KEY_REF }
+}
+
+function startRuntime(
+  ctx: Context,
+  settings: ProviderSettingsLike,
+  config: Config,
+  apiKeys: ApiKeyManager,
+  allowAutomatic = true,
+): ActiveRuntime {
+  const resolved = normalizedConfig(config)
+  const controller = new EngineController(resolved, ctx.logger, {
+    resolveApiKey: () => apiKeys.backendKey(resolved),
+  })
+  const provider = new ModelProviderBridge(
+    settings,
+    controller.endpoint,
+    resolved,
+    ctx.logger,
+    () => apiKeys.clientKey(resolved),
+  )
   const startup = controller.ensureReady(allowAutomatic).catch((error: unknown) => {
     ctx.logger.error(error instanceof Error ? error : new Error(String(error)))
     return false
@@ -77,12 +100,14 @@ async function stopRuntime(runtime: ActiveRuntime, forceStop = false): Promise<v
 }
 
 function configSignature(config: Config): string {
-  const { modelDirectory: _, ...runtime } = config
+  const { modelDirectory: _, statusDisplay: __, ...runtime } = config
   return JSON.stringify(runtime)
 }
 
 export function apply(ctx: Context, config: Config): () => Promise<void> {
   const settings = (ctx as Context & { settings: ProviderSettingsLike }).settings
+  const credentials = (ctx as Context & { credentials: CredentialProvider }).credentials
+  const apiKeys = new ApiKeyManager(credentials)
   const releases = new EngineReleaseManager()
   const downloads = new ModelDownloadManager()
   if (config.mode !== 'connect' && !config.executable?.trim()) {
@@ -93,7 +118,7 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
     })
   }
   let source = (): Config => config
-  let active: ActiveRuntime | undefined = startRuntime(ctx, settings, config)
+  let active: ActiveRuntime | undefined = startRuntime(ctx, settings, config, apiKeys)
   let activeSignature = configSignature(config)
   let activeConfig = config
   let transition = Promise.resolve()
@@ -118,7 +143,7 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
       active = undefined
       if (previous !== undefined) await stopRuntime(previous, stopOwned)
       if (disposed) return
-      active = startRuntime(ctx, settings, next, false)
+      active = startRuntime(ctx, settings, next, apiKeys, false)
       activeSignature = signature
       activeConfig = next
     })
@@ -155,6 +180,8 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
         if (!active?.controller.ownsProcess && !active?.controller.isStarting) throw new Error('Only an engine started by this plugin can be stopped.')
         await applySettings(true)
       },
+      apiKeys,
+      config: source,
       releases,
       downloads,
     })

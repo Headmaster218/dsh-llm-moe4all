@@ -1,3 +1,4 @@
+import { type EngineRuntimeMetrics } from './runtime-metrics.js';
 export { endpointFromConfig, validateEndpoint } from './connection.js';
 export type LaunchMode = 'connect' | 'prompt' | 'auto' | 'managed';
 export type EffectiveLaunchMode = Exclude<LaunchMode, 'managed'>;
@@ -66,6 +67,7 @@ export interface EngineRuntimeStatus {
     processes?: RunningProcess[];
     startupStartedAt?: string;
     startupLines?: string[];
+    metrics?: EngineRuntimeMetrics;
 }
 export interface EngineStartResult {
     ok: boolean;
@@ -74,6 +76,7 @@ export interface EngineStartResult {
 export interface EngineControllerDependencies {
     detectProcesses(processNames: string[]): Promise<RunningProcess[]>;
     probeResources(executable: string, config: EngineConfig): Promise<ResourceSnapshot>;
+    resolveApiKey(): Promise<string | undefined>;
 }
 export declare const DEFAULT_CONFIG: {
     readonly mode: "prompt";
@@ -122,6 +125,7 @@ export declare class EngineController {
     private currentStatus;
     private startupStartedAt;
     private startupLines;
+    private readonly runtimeMetrics;
     constructor(config: EngineConfig, logger?: EngineLogger, dependencies?: Partial<EngineControllerDependencies>);
     statusSnapshot(): EngineRuntimeStatus;
     get ownsProcess(): boolean;

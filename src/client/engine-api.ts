@@ -1,4 +1,5 @@
 import type { EngineControlStatus } from '../host-routes.js'
+import type { ApiKeyStatus } from '../api-key.js'
 import type { EngineInstallProgress, EngineReleaseStatus } from '../engine-release.js'
 import type { LocalModelFiles, LocalModelLibrary, SetupModelPaths } from '../model-files.js'
 import type { ModelDownloadProgress, RecommendedModel } from '../model-download.js'
@@ -48,6 +49,27 @@ export function startEngine(force = false): Promise<StartResponse> {
 
 export function stopEngine(): Promise<StartResponse> {
   return json('/api/moe4all/stop', { method: 'POST', body: '{}' })
+}
+
+export async function fetchApiKey(): Promise<ApiKeyStatus> {
+  const result = await json<ApiKeyStatus & { ok: boolean }>('/api/moe4all/api-key')
+  return result
+}
+
+export async function updateApiKey(value: string): Promise<ApiKeyStatus> {
+  const result = await json<ApiKeyStatus & { ok: boolean }>('/api/moe4all/api-key', {
+    method: 'POST',
+    body: JSON.stringify({ value }),
+  })
+  return result
+}
+
+export async function regenerateApiKey(): Promise<ApiKeyStatus> {
+  const result = await json<ApiKeyStatus & { ok: boolean }>('/api/moe4all/api-key', {
+    method: 'POST',
+    body: JSON.stringify({ regenerate: true }),
+  })
+  return result
 }
 
 export function fetchReleaseStatus(force = false): Promise<ReleaseResponse> {

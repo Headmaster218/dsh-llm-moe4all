@@ -14,7 +14,7 @@
         executable: ''
         arguments: []
         workingDirectory: ''
-        apiKeyEnv: ''
+        apiKeyEnv: MOE4ALL_API_KEY
         allowRemoteEndpoint: false
         processNames:
           - infr.exe
@@ -39,3 +39,4 @@
           - embedding
         modelRefreshIntervalMs: 15000
         modelDiscoveryTimeoutMs: 3000
+        statusDisplay: hover
