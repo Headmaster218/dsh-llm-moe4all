@@ -56,6 +56,12 @@ declare const copy: {
     readonly splitterLabel: readonly ["Dispatch cap", "Dispatch 上限"];
     readonly cacheSection: readonly ["Conversation cache", "会话缓存"];
     readonly cacheEnabled: readonly ["Reuse conversations from SSD", "复用 SSD 会话缓存"];
+    readonly kvQuantization: readonly ["KV cache precision", "KV Cache 量化"];
+    readonly kvQuantizationHelp: readonly ["Lower precision saves VRAM. Engine automatic follows the selected resource profile.", "更低精度可节省显存；引擎自动会跟随所选资源策略。"];
+    readonly kvCustom: readonly ["Custom K / V", "分别指定 K / V"];
+    readonly kvKeyType: readonly ["K cache type", "K Cache 类型"];
+    readonly kvValueType: readonly ["V cache type", "V Cache 类型"];
+    readonly sessionCacheKvHint: readonly ["SSD conversation cache requires Q8_0 K and V, so Q8_0 is used while it is enabled.", "SSD 会话缓存要求 K、V 均为 Q8_0，启用期间会固定使用 Q8_0。"];
     readonly networkSection: readonly ["Network & connection", "网络与连接"];
     readonly samplingSection: readonly ["Generation defaults", "生成默认值"];
     readonly temperatureLabel: readonly ["Temperature", "温度"];

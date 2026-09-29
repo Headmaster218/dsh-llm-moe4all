@@ -35,6 +35,21 @@ function ExtraArguments({ workspace: w, t }: { workspace: Workspace; t: Translat
 }
 export function AdvancedOptions({ workspace: w, t }: { workspace: Workspace; t: Translate }) {
   const e = w.editor!
+  const kvPreset = e.setup.sessionCacheEnabled
+    ? 'q8_0'
+    : e.setup.kvTypeK === e.setup.kvTypeV && ['auto', 'q8_0', 'f16'].includes(e.setup.kvTypeK)
+      ? e.setup.kvTypeK
+      : 'custom'
+  const setKvPreset = (value: string) => {
+    if (value === 'custom') {
+      w.setup({
+        kvTypeK: e.setup.kvTypeK === 'auto' ? 'q8_0' : e.setup.kvTypeK,
+        kvTypeV: e.setup.kvTypeV === 'auto' ? 'f16' : e.setup.kvTypeV,
+      })
+      return
+    }
+    w.setup({ kvTypeK: value, kvTypeV: value })
+  }
   const argument = (key: string, label: string, placeholder = t('automatic')) => (
     <Field label={label} help={t('advancedOverride')}>
       <input
@@ -75,11 +90,44 @@ export function AdvancedOptions({ workspace: w, t }: { workspace: Workspace; t: 
         </div>
       </Disclosure>
       <Disclosure title={t('cacheSection')} icon={Database}>
+        <div className="m4a-field-grid">
+          <Field label={t('kvQuantization')} help={t('kvQuantizationHelp')}>
+            <select
+              value={kvPreset}
+              disabled={e.setup.sessionCacheEnabled}
+              onChange={(event) => setKvPreset(event.target.value)}
+            >
+              <option value="auto">{t('automatic')}</option>
+              <option value="q8_0">Q8_0 K + Q8_0 V</option>
+              <option value="f16">F16 K + F16 V</option>
+              <option value="custom">{t('kvCustom')}</option>
+            </select>
+          </Field>
+          {kvPreset === 'custom' && !e.setup.sessionCacheEnabled && (
+            <>
+              <Field label={t('kvKeyType')}>
+                <select value={e.setup.kvTypeK} onChange={(event) => w.setup({ kvTypeK: event.target.value })}>
+                  {['q8_0', 'q4_0', 'q4_1', 'q5_0', 'q5_1', 'iq4_nl', 'f16', 'bf16', 'f32', 'turbo2', 'turbo3', 'turbo4'].map((value) => (
+                    <option value={value} key={value}>{value}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t('kvValueType')}>
+                <select value={e.setup.kvTypeV} onChange={(event) => w.setup({ kvTypeV: event.target.value })}>
+                  {['q8_0', 'q4_0', 'q4_1', 'q5_0', 'q5_1', 'iq4_nl', 'f16', 'bf16', 'f32', 'turbo2', 'turbo3', 'turbo4'].map((value) => (
+                    <option value={value} key={value}>{value}</option>
+                  ))}
+                </select>
+              </Field>
+            </>
+          )}
+        </div>
         <Toggle
           label={t('cacheEnabled')}
           checked={e.setup.sessionCacheEnabled}
           onChange={(value) => w.setup({ sessionCacheEnabled: value })}
         />
+        {e.setup.sessionCacheEnabled && <small>{t('sessionCacheKvHint')}</small>}
         {e.setup.sessionCacheEnabled && (
           <div className="m4a-field-grid">
             <Field label={t('sessionCachePath')} help={t('sessionCachePathHint')} className="m4a-span-2">

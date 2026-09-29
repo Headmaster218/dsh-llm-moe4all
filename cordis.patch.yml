@@ -1,5 +1,5 @@
-# The plugin updates DSH's existing llm-pi-ai adapter in memory after it has
-# discovered the models advertised by the configured MoE4All endpoint.
+# The plugin manages the engine and synchronizes its live endpoint and models
+# through DSH's settings service after discovery succeeds.
 
 - insert:
     - id: moe4all-engine

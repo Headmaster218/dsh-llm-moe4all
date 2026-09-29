@@ -31,10 +31,13 @@ test('first-run setup adds aggressive and MTP settings explicitly', () => {
     parallel: 2,
     profile: 'aggressive',
     mtp: true,
+    kvTypeK: 'f16',
+    kvTypeV: 'q8_0',
     mtpModel: 'mtp.gguf',
   }), [
     'serve', '--addr', '0.0.0.0:1234', '--parallel', '2', '--ctx', '20480', '--max-new', '4096',
     '--set', 'device.auto_profile=aggressive', '--set', 'spec.mtp=true', '--set', 'spec.draft=mtp.gguf',
+    '--set', 'kv.type_k=f16', '--set', 'kv.type_v=q8_0',
     '--set', 'kv.session_cache_dir=', 'model.gguf',
   ])
 })
@@ -103,6 +106,8 @@ test('saved engine arguments round-trip into the unified settings editor', () =>
     parallel: 2,
     profile: 'aggressive',
     mtp: true,
+    kvTypeK: 'f16',
+    kvTypeV: 'q8_0',
     sessionCache: { directory: 'kv-sessions', maxSize: '5g', idleSeconds: 120, ttlHours: 48 },
   })
   assert.deepEqual(parseEngineArguments(arguments_), {
@@ -114,6 +119,8 @@ test('saved engine arguments round-trip into the unified settings editor', () =>
     parallel: 2,
     profile: 'aggressive',
     mtp: true,
+    kvTypeK: 'q8_0',
+    kvTypeV: 'q8_0',
     sessionCacheEnabled: true,
     sessionCache: { directory: 'kv-sessions', maxSize: '5g', idleSeconds: 120, ttlHours: 48 },
   })

@@ -175,7 +175,7 @@ test('startup failures retain the engine output for the UI', async () => {
   await controller.dispose()
 })
 
-test('automatic startup caps RAM to Windows commit headroom without a false busy warning', async () => {
+test('automatic startup leaves the native auto profile unchanged', async () => {
   const port = await unusedPort()
   const controller = new EngineController({
     mode: 'auto',
@@ -206,8 +206,7 @@ test('automatic startup caps RAM to Windows commit headroom without a false busy
   assert.equal(await controller.ensureReady(), true)
   const status = controller.statusSnapshot()
   assert.equal(status.phase, 'ready')
-  assert.equal(status.adjustedRamBudgetBytes, 16 * 1024 ** 3)
-  assert.match(status.startupLines?.join('\n') ?? '', /Compatibility guard/)
+  assert.doesNotMatch(status.startupLines?.join('\n') ?? '', /Compatibility guard/)
   await controller.dispose()
 })
 

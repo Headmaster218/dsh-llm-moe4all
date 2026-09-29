@@ -37,6 +37,7 @@ export interface EngineRuntimeAccess {
   controller(): EngineController | undefined
   models(): DiscoveredModel[]
   refreshModels(): Promise<void>
+  activateDefaultModel?(): Promise<void>
   configuredExecutable(): string
   pendingChanges?(): boolean
   prepareStart?(): Promise<void>
@@ -162,7 +163,10 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
       return
     }
     const result: EngineStartResult = await controller.requestStart(body.force === true)
-    if (result.ok) await access.refreshModels()
+    if (result.ok) {
+      await access.refreshModels()
+      await access.activateDefaultModel?.()
+    }
     writeJson(response, 200, { ...result, status: { ...result.status, models: access.models() } })
   }
 

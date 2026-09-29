@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { createServer } from 'node:http'
 import { test } from 'node:test'
+import type { SettingsPathOp } from '@deepseek-ai/dsh-settings'
 
 import { discoverModels, ModelProviderBridge } from '../src/model-provider.js'
 
@@ -9,6 +10,54 @@ const quietLogger = {
   info() {},
   warn() {},
   error() {},
+}
+
+function record(value: unknown): Record<string, unknown> {
+  assert(value !== null && typeof value === 'object' && !Array.isArray(value))
+  return value as Record<string, unknown>
+}
+
+function mutate(root: Record<string, unknown>, operation: SettingsPathOp): void {
+  const path = [...operation.path]
+  const last = path.pop()
+  assert(last !== undefined)
+  let cursor = root
+  for (const part of path) {
+    const value = cursor[part]
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) cursor[part] = {}
+    cursor = cursor[part] as Record<string, unknown>
+  }
+  if (operation.op === 'set') cursor[last] = structuredClone(operation.value)
+  else delete cursor[last]
+}
+
+class FakeSettings {
+  readonly values: Record<string, Record<string, unknown>> = {
+    'llm-pi-ai': {
+      providers: {
+        openai: { displayName: 'OpenAI' },
+        moe4all: {
+          timeoutMs: 42_000,
+          models: [{
+            id: 'Qwen3.8-Flash',
+            reasoningEfforts: { medium: 'custom-medium' },
+            compat: { supportsDeveloperRole: true, supportsTemperature: false },
+          }],
+        },
+      },
+    },
+    'agent-default-model': { provider: 'openai', model: 'old-model', reasoningEffort: 'high' },
+  }
+
+  get(namespace: string): unknown {
+    return this.values[namespace]
+  }
+
+  async mutate(namespace: string, operations: readonly SettingsPathOp[]): Promise<void> {
+    const value = this.values[namespace]
+    assert(value)
+    for (const operation of operations) mutate(value, operation)
+  }
 }
 
 async function modelServer(): Promise<{ endpoint: URL, close(): Promise<void> }> {
@@ -48,37 +97,33 @@ test('model discovery filters embedding models and duplicate IDs', async () => {
   await server.close()
 })
 
-test('provider bridge updates the existing pi-ai adapter without persisting its config', async () => {
+test('provider bridge persists the live endpoint and activates the discovered model', async () => {
   const server = await modelServer()
-  const original = { providers: { openai: { displayName: 'OpenAI' } } }
-  const updates: Array<{ config: unknown, noSave?: boolean }> = []
-  let firstUpdate!: () => void
-  const updated = new Promise<void>((resolve) => { firstUpdate = resolve })
-  const fiber = {
-    async update(config: unknown, noSave?: boolean) {
-      updates.push({ config, ...(noSave === undefined ? {} : { noSave }) })
-      firstUpdate()
-    },
-    async await() {},
-  }
-  const entry = { options: { config: original }, fiber }
-  const bridge = new ModelProviderBridge({
-    resolve(id: string) {
-      assert.equal(id, 'llm-pi-ai')
-      return entry
-    },
-  }, server.endpoint, { modelRefreshIntervalMs: 60_000 }, quietLogger)
+  const settings = new FakeSettings()
+  const bridge = new ModelProviderBridge(
+    settings,
+    server.endpoint,
+    { contextWindow: 32_768, maxTokens: 4096, modelRefreshIntervalMs: 60_000 },
+    quietLogger,
+  )
 
-  const run = bridge.run()
-  await updated
-  const applied = updates[0]?.config as { providers?: Record<string, unknown> }
-  assert.equal(updates[0]?.noSave, true)
-  assert.deepEqual(applied.providers?.openai, { displayName: 'OpenAI' })
-  assert.ok(applied.providers?.moe4all)
+  await bridge.refreshNow()
+  const providers = record(settings.values['llm-pi-ai']!.providers)
+  assert.deepEqual(providers.openai, { displayName: 'OpenAI' })
+  const profile = record(providers.moe4all)
+  assert.equal(profile.baseURL, server.endpoint.href.replace(/\/$/u, ''))
+  assert.equal(profile.timeoutMs, 42_000)
+  const model = record((profile.models as unknown[])[0])
+  assert.deepEqual(model.reasoningEfforts, { medium: 'custom-medium' })
+  assert.deepEqual(model.compat, { supportsDeveloperRole: false, supportsTemperature: false })
+
+  await bridge.activateDefaultModel()
+  assert.deepEqual(settings.values['agent-default-model'], {
+    provider: 'moe4all',
+    model: 'Qwen3.8-Flash',
+    reasoningEffort: 'medium',
+  })
 
   await bridge.dispose()
-  await run
-  assert.equal(updates.at(-1)?.config, original)
-  assert.equal(updates.at(-1)?.noSave, true)
   await server.close()
 })

@@ -66,9 +66,6 @@ export function composeEditor(editor: Editor): Config {
   const { sessionCache, ...setup } = editor.setup
   if (!setup.model.trim()) throw new Error('missingModelError')
   const custom = parseExtraArguments(editor.extraText ?? JSON.stringify(editor.extras))
-  const extras = setup.sessionCacheEnabled
-    ? setArgument(setArgument(custom, 'kv.type_k', ''), 'kv.type_v', '')
-    : custom
   config.arguments = buildEngineArguments({
     ...setup,
     host: config.host ?? '127.0.0.1',
@@ -76,7 +73,7 @@ export function composeEditor(editor: Editor): Config {
     contextWindow,
     maxTokens,
     ...(setup.sessionCacheEnabled ? { sessionCache } : {}),
-    extraArguments: extras,
+    extraArguments: custom,
   })
   config.vision = setup.visionModel !== ''
   return config

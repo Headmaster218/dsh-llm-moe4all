@@ -7,10 +7,10 @@ import { EngineController, endpointFromConfig, validateEndpoint, type EngineConf
 import { EngineReleaseManager } from './engine-release.js'
 import { makeEngineRoutes } from './host-routes.js'
 import { ModelDownloadManager } from './model-download.js'
-import { ModelProviderBridge, type LoaderLike, type ModelProviderConfig } from './model-provider.js'
+import { ModelProviderBridge, type ModelProviderConfig, type ProviderSettingsLike } from './model-provider.js'
 
 export const name = 'moe4all-engine'
-export const inject = ['loader']
+export const inject = ['settings']
 export const SETTINGS_NAMESPACE = settingsNamespace('moe4all-engine')
 
 export interface Config extends EngineConfig, ModelProviderConfig {
@@ -56,9 +56,9 @@ interface ActiveRuntime {
   discovery: Promise<void>
 }
 
-function startRuntime(ctx: Context, loader: LoaderLike, config: Config, allowAutomatic = true): ActiveRuntime {
+function startRuntime(ctx: Context, settings: ProviderSettingsLike, config: Config, allowAutomatic = true): ActiveRuntime {
   const controller = new EngineController(config, ctx.logger)
-  const provider = new ModelProviderBridge(loader, controller.endpoint, config, ctx.logger)
+  const provider = new ModelProviderBridge(settings, controller.endpoint, config, ctx.logger)
   const startup = controller.ensureReady(allowAutomatic).catch((error: unknown) => {
     ctx.logger.error(error instanceof Error ? error : new Error(String(error)))
     return false
@@ -82,7 +82,7 @@ function configSignature(config: Config): string {
 }
 
 export function apply(ctx: Context, config: Config): () => Promise<void> {
-  const loader = (ctx as Context & { loader: LoaderLike }).loader
+  const settings = (ctx as Context & { settings: ProviderSettingsLike }).settings
   const releases = new EngineReleaseManager()
   const downloads = new ModelDownloadManager()
   if (config.mode !== 'connect' && !config.executable?.trim()) {
@@ -93,7 +93,7 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
     })
   }
   let source = (): Config => config
-  let active: ActiveRuntime | undefined = startRuntime(ctx, loader, config)
+  let active: ActiveRuntime | undefined = startRuntime(ctx, settings, config)
   let activeSignature = configSignature(config)
   let activeConfig = config
   let transition = Promise.resolve()
@@ -118,7 +118,7 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
       active = undefined
       if (previous !== undefined) await stopRuntime(previous, stopOwned)
       if (disposed) return
-      active = startRuntime(ctx, loader, next, false)
+      active = startRuntime(ctx, settings, next, false)
       activeSignature = signature
       activeConfig = next
     })
@@ -147,6 +147,7 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
       controller: () => active?.controller,
       models: () => active?.provider.models ?? [],
       refreshModels: async () => { await active?.provider.refreshNow() },
+      activateDefaultModel: async () => { await active?.provider.activateDefaultModel() },
       configuredExecutable: () => source().executable ?? '',
       pendingChanges: () => activeSignature !== configSignature(source()),
       prepareStart: () => applySettings(),
@@ -204,4 +205,4 @@ export { ENGINE_PATHS, isLoopbackRequest, makeEngineRoutes } from './host-routes
 export { ModelDownloadManager, RECOMMENDED_MODELS } from './model-download.js'
 export type { ModelDownloadProgress, RecommendedModel, RecommendedModelKind } from './model-download.js'
 export { discoverModels, ModelProviderBridge, providerProfile } from './model-provider.js'
-export type { DiscoveredModel, LoaderLike, ModelProviderConfig } from './model-provider.js'
+export type { DiscoveredModel, ModelProviderConfig, ProviderSettingsLike } from './model-provider.js'

@@ -95,34 +95,93 @@ interface LibraryFile {
   size: number
 }
 
-async function collectModelFiles(directory: string, maxDepth: number, result: Map<string, LibraryFile>): Promise<void> {
+export interface ModelScanLimits {
+  maxDepth: number
+  maxDirectories: number
+  maxFiles: number
+  timeoutMs: number
+}
+
+const DEFAULT_SCAN_LIMITS: ModelScanLimits = {
+  maxDepth: 6,
+  maxDirectories: 512,
+  maxFiles: 20_000,
+  timeoutMs: 5_000,
+}
+
+function scanLimits(overrides: Partial<ModelScanLimits> = {}): ModelScanLimits {
+  return { ...DEFAULT_SCAN_LIMITS, ...overrides }
+}
+
+async function beforeDeadline<T>(operation: Promise<T>, deadline: number): Promise<T> {
+  const remaining = deadline - Date.now()
+  if (remaining <= 0) throw new Error('Model folder search timed out. Choose a more specific folder.')
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('Model folder search timed out. Choose a more specific folder.')),
+          remaining,
+        )
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
+async function collectModelFiles(
+  directory: string,
+  result: Map<string, LibraryFile>,
+  overrides: Partial<ModelScanLimits> = {},
+): Promise<void> {
+  const limits = scanLimits(overrides)
+  const deadline = Date.now() + limits.timeoutMs
   const pending: Array<{ directory: string, depth: number }> = [{ directory, depth: 0 }]
   const visited = new Set<string>()
-  while (pending.length > 0) {
-    const current = pending.shift()!
+  let cursor = 0
+  let fileCount = 0
+  while (cursor < pending.length) {
+    if (visited.size >= limits.maxDirectories) {
+      throw new Error('Model folder search reached the directory limit. Choose a more specific folder.')
+    }
+    const current = pending[cursor++]!
     const key = current.directory.toLowerCase()
     if (visited.has(key)) continue
     visited.add(key)
     let entries
     try {
-      entries = await readdir(current.directory, { withFileTypes: true })
-    } catch {
+      entries = await beforeDeadline(readdir(current.directory, { withFileTypes: true }), deadline)
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('timed out')) throw error
       continue
     }
     for (const entry of entries) {
       const path = join(current.directory, entry.name)
-      if (entry.isDirectory() && current.depth < maxDepth) {
+      if (entry.isDirectory() && current.depth < limits.maxDepth) {
         pending.push({ directory: path, depth: current.depth + 1 })
       } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.gguf') {
+        fileCount += 1
+        if (fileCount > limits.maxFiles) {
+          throw new Error('Model folder search reached the file limit. Choose a more specific folder.')
+        }
         try {
-          result.set(path.toLowerCase(), { path, size: (await stat(path)).size })
-        } catch {}
+          result.set(path.toLowerCase(), { path, size: (await beforeDeadline(stat(path), deadline)).size })
+        } catch (error) {
+          if (error instanceof Error && error.message.includes('timed out')) throw error
+        }
       }
     }
   }
 }
 
-export async function discoverModelLibrary(input: string, selectedPaths: string[] = []): Promise<LocalModelLibrary> {
+export async function discoverModelLibrary(
+  input: string,
+  selectedPaths: string[] = [],
+  limits: Partial<ModelScanLimits> = {},
+): Promise<LocalModelLibrary> {
   const normalized = stripOuterQuotes(input)
   const files = new Map<string, LibraryFile>()
   let directory = normalized === '' ? '' : resolve(normalized)
@@ -133,7 +192,7 @@ export async function discoverModelLibrary(input: string, selectedPaths: string[
     })
     if (details?.isFile()) directory = dirname(directory)
     else if (details !== undefined && !details.isDirectory()) throw new Error('The model library path is not a file or directory.')
-    await collectModelFiles(directory, 4, files)
+    await collectModelFiles(directory, files, limits)
   }
   for (const raw of selectedPaths) {
     const value = stripOuterQuotes(raw)
@@ -142,7 +201,7 @@ export async function discoverModelLibrary(input: string, selectedPaths: string[
     try {
       const details = await stat(path)
       if (details.isFile() && extname(path).toLowerCase() === '.gguf') {
-        await collectModelFiles(dirname(path), 0, files)
+        await collectModelFiles(dirname(path), files, { ...limits, maxDepth: 0 })
       }
     } catch {}
   }
@@ -185,7 +244,10 @@ export async function discoverModelLibrary(input: string, selectedPaths: string[
   return { directory, models }
 }
 
-export async function discoverLocalModelFiles(input: string): Promise<LocalModelFiles> {
+export async function discoverLocalModelFiles(
+  input: string,
+  limits: Partial<ModelScanLimits> = {},
+): Promise<LocalModelFiles> {
   const normalized = stripOuterQuotes(input)
   if (normalized === '') throw new Error('A model file or directory path is required.')
   const absolute = resolve(normalized)
@@ -196,13 +258,13 @@ export async function discoverLocalModelFiles(input: string): Promise<LocalModel
     throw new Error('The selected model file must use the .gguf extension.')
   }
   const directory = info.isDirectory() ? absolute : dirname(absolute)
-  const entries = await readdir(directory, { withFileTypes: true })
+  const files = new Map<string, LibraryFile>()
+  await collectModelFiles(directory, files, limits)
   const result: LocalModelFiles = { directory, ...(selected === undefined ? {} : { selected }), main: [], vision: [], embedding: [], mtp: [] }
-  for (const entry of entries) {
-    if (!entry.isFile() || extname(entry.name).toLowerCase() !== '.gguf') continue
-    const fullPath = join(directory, entry.name)
-    const kind = modelKind(entry.name)
-    if (kind === 'main' && !isFirstOrOnlyShard(entry.name)) continue
+  for (const { path: fullPath } of files.values()) {
+    const name = basename(fullPath)
+    const kind = modelKind(name)
+    if (kind === 'main' && !isFirstOrOnlyShard(name)) continue
     result[kind].push(fullPath)
   }
   for (const values of [result.main, result.vision, result.embedding, result.mtp]) {

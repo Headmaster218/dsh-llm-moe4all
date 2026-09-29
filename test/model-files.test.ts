@@ -27,6 +27,23 @@ test('model discovery classifies direct GGUF files and keeps only the first main
   }
 })
 
+test('model import scans nested folders within a bounded search', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'moe4all-model-tree-'))
+  try {
+    const nested = join(directory, 'vendor', 'family', 'quantization')
+    await mkdir(nested, { recursive: true })
+    const model = join(nested, 'nested-Q8_0.gguf')
+    await writeFile(model, '')
+    assert.deepEqual((await discoverLocalModelFiles(directory)).main, [model])
+    await assert.rejects(
+      discoverLocalModelFiles(directory, { maxDirectories: 1 }),
+      /directory limit/u,
+    )
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('setup path validation strips pasted outer quotes', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'moe4all-paths-'))
   try {

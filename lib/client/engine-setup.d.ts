@@ -18,6 +18,8 @@ export interface EngineSetupValues {
     parallel: number;
     profile: EngineAutoProfile;
     mtp: boolean;
+    kvTypeK?: string;
+    kvTypeV?: string;
     sessionCache?: SessionCacheSetup;
     extraArguments?: string[];
 }
@@ -30,6 +32,8 @@ export interface ParsedEngineArguments {
     parallel: number;
     profile: EngineAutoProfile;
     mtp: boolean;
+    kvTypeK: string;
+    kvTypeV: string;
     sessionCacheEnabled: boolean;
     sessionCache: SessionCacheSetup;
 }

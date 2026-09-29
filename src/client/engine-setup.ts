@@ -20,6 +20,8 @@ export interface EngineSetupValues {
   parallel: number
   profile: EngineAutoProfile
   mtp: boolean
+  kvTypeK?: string
+  kvTypeV?: string
   sessionCache?: SessionCacheSetup
   extraArguments?: string[]
 }
@@ -33,6 +35,8 @@ export interface ParsedEngineArguments {
   parallel: number
   profile: EngineAutoProfile
   mtp: boolean
+  kvTypeK: string
+  kvTypeV: string
   sessionCacheEnabled: boolean
   sessionCache: SessionCacheSetup
 }
@@ -83,7 +87,17 @@ function setValue(arguments_: string[], path: string): string | undefined {
 }
 
 const managedOptions = new Set(['--addr', '--parallel', '--ctx', '--max-new', '--mmproj', '--embedding-model', '--embedding-idle-timeout'])
-const managedSettings = new Set(['device.auto_profile', 'spec.mtp', 'spec.draft', 'kv.session_cache_dir', 'kv.session_idle_secs', 'kv.session_cache_max', 'kv.session_cache_ttl_hours'])
+const managedSettings = new Set([
+  'device.auto_profile',
+  'spec.mtp',
+  'spec.draft',
+  'kv.type_k',
+  'kv.type_v',
+  'kv.session_cache_dir',
+  'kv.session_idle_secs',
+  'kv.session_cache_max',
+  'kv.session_cache_ttl_hours',
+])
 
 export function modelArgument(arguments_: string[]): string {
   for (let index = 0; index < arguments_.length; index += 1) {
@@ -132,6 +146,8 @@ export function parseEngineArguments(arguments_: string[]): ParsedEngineArgument
     parallel: Math.max(1, integer(optionValue(arguments_, '--parallel'), 1)),
     profile: setValue(arguments_, 'device.auto_profile') === 'aggressive' ? 'aggressive' : 'conservative',
     mtp: setValue(arguments_, 'spec.mtp') === 'true',
+    kvTypeK: setValue(arguments_, 'kv.type_k') ?? 'auto',
+    kvTypeV: setValue(arguments_, 'kv.type_v') ?? 'auto',
     sessionCacheEnabled: sessionDirectory !== '',
     sessionCache: {
       directory: sessionDirectory || 'kv-sessions',
@@ -193,6 +209,10 @@ export function buildEngineArguments(values: EngineSetupValues): string[] {
       '--set', `kv.session_cache_ttl_hours=${values.sessionCache.ttlHours}`,
     )
   } else {
+    const kvTypeK = values.kvTypeK?.trim() || 'auto'
+    const kvTypeV = values.kvTypeV?.trim() || 'auto'
+    if (kvTypeK !== 'auto') arguments_.push('--set', `kv.type_k=${kvTypeK}`)
+    if (kvTypeV !== 'auto') arguments_.push('--set', `kv.type_v=${kvTypeV}`)
     arguments_.push('--set', 'kv.session_cache_dir=')
   }
   arguments_.push(...(values.extraArguments ?? []))

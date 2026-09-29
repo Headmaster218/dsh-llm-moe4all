@@ -30,7 +30,13 @@ export interface LocalModelLibrary {
     directory: string;
     models: LocalModelEntry[];
 }
-export declare function discoverModelLibrary(input: string, selectedPaths?: string[]): Promise<LocalModelLibrary>;
-export declare function discoverLocalModelFiles(input: string): Promise<LocalModelFiles>;
+export interface ModelScanLimits {
+    maxDepth: number;
+    maxDirectories: number;
+    maxFiles: number;
+    timeoutMs: number;
+}
+export declare function discoverModelLibrary(input: string, selectedPaths?: string[], limits?: Partial<ModelScanLimits>): Promise<LocalModelLibrary>;
+export declare function discoverLocalModelFiles(input: string, limits?: Partial<ModelScanLimits>): Promise<LocalModelFiles>;
 export declare function validateSetupModelPaths(paths: SetupModelPaths): Promise<SetupModelPaths>;
 //# sourceMappingURL=model-files.d.ts.map

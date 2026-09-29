@@ -29,6 +29,7 @@ export interface EngineRuntimeAccess {
     controller(): EngineController | undefined;
     models(): DiscoveredModel[];
     refreshModels(): Promise<void>;
+    activateDefaultModel?(): Promise<void>;
     configuredExecutable(): string;
     pendingChanges?(): boolean;
     prepareStart?(): Promise<void>;

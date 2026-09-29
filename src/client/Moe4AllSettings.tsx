@@ -72,7 +72,6 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
   const [advanced, setAdvanced] = useState(false)
   const [copied, setCopied] = useState(false)
   const [clock, setClock] = useState(Date.now())
-  const routedFirstUse = useRef(false)
   const hadModel = useRef(false)
   useEffect(() => {
     const dialog = root.current?.closest('[role="dialog"]')
@@ -109,12 +108,8 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
   useEffect(() => {
     const editor = w.editor
     if (!editor || editor.config.mode === 'connect') return
-    const engineSelected = !!editor.config.executable
     const modelSelected = !!editor.setup.model
-    if (engineSelected && !modelSelected && !routedFirstUse.current) {
-      routedFirstUse.current = true
-      setTab('models')
-    } else if (modelSelected && !hadModel.current && w.download.stage === 'complete') {
+    if (modelSelected && !hadModel.current && w.download.stage === 'complete') {
       setTab('run')
     }
     hadModel.current = modelSelected

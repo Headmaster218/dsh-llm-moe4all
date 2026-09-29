@@ -72,7 +72,7 @@ test('invalid token counts and raw arguments cannot silently save stale values',
   ])
 })
 
-test('manual parameter replacement removes stale duplicates, and cache enforces q8', () => {
+test('manual parameter replacement preserves KV selection, and SSD cache enforces q8', () => {
   assert.deepEqual(setArgument(['--ubatch=512', '--temp', '0.7', '--ubatch', '1024'], '--ubatch', '2048'), [
     '--temp',
     '0.7',
@@ -80,10 +80,19 @@ test('manual parameter replacement removes stale duplicates, and cache enforces 
     '2048',
   ])
   const editor = editorFromConfig({
-    arguments: ['serve', '--set', 'kv.type_k=f16', '--set', 'kv.type_v=f16', 'chat.gguf'],
+    arguments: [
+      'serve',
+      '--set', 'kv.type_k=f16',
+      '--set', 'kv.type_v=f16',
+      '--set', 'kv.session_cache_dir=',
+      'chat.gguf',
+    ],
   })
+  let args = composeEditor(editor).arguments!
+  assert.equal(argumentValue(args, 'kv.type_k'), 'f16')
+  assert.equal(argumentValue(args, 'kv.type_v'), 'f16')
   editor.setup.sessionCacheEnabled = true
-  const args = composeEditor(editor).arguments!
+  args = composeEditor(editor).arguments!
   assert.equal(argumentValue(args, 'kv.type_k'), 'q8_0')
   assert.equal(argumentValue(args, 'kv.type_v'), 'q8_0')
 })

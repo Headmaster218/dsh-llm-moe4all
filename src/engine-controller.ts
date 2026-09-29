@@ -92,7 +92,6 @@ export interface EngineRuntimeStatus {
   processes?: RunningProcess[]
   startupStartedAt?: string
   startupLines?: string[]
-  adjustedRamBudgetBytes?: number
 }
 
 export interface EngineStartResult {
@@ -471,59 +470,6 @@ function percent(available: number, total: number): string {
   return `${(available / total * 100).toFixed(1)}%`
 }
 
-function formatGiB(bytes: number): string {
-  return `${(bytes / 1024 ** 3).toFixed(2)} GiB`
-}
-
-interface RamBudgetAdjustment {
-  budgetBytes: number
-  requestedBytes: number
-  arguments: string[]
-}
-
-const GIB = 1024 ** 3
-
-function setValue(arguments_: string[], path: string): string | undefined {
-  for (let index = 0; index < arguments_.length; index += 1) {
-    const argument = arguments_[index]!
-    if (argument === '--set') {
-      const value = arguments_[index + 1]
-      if (value?.startsWith(`${path}=`)) return value.slice(path.length + 1)
-      index += 1
-      continue
-    }
-    const inline = /^--set=(.+)$/u.exec(argument)?.[1]
-    if (inline?.startsWith(`${path}=`)) return inline.slice(path.length + 1)
-  }
-  return undefined
-}
-
-function automaticRamBudgetAdjustment(
-  arguments_: string[],
-  resources: ResourceSnapshot | undefined,
-): RamBudgetAdjustment | undefined {
-  if (resources?.commitAvailableBytes === undefined) return undefined
-  if (setValue(arguments_, 'device.ram_budget') !== undefined) return undefined
-  const profile = setValue(arguments_, 'device.auto_profile')
-  if (profile !== 'aggressive' && profile !== 'conservative') return undefined
-
-  const requestedBytes = profile === 'aggressive'
-    ? Math.max(0, resources.ramTotalBytes - 14 * GIB)
-    : Math.max(0, resources.ramAvailableBytes - 3 * GIB)
-  const expectedVramCommit = profile === 'aggressive'
-    ? Math.max(0, resources.vramTotalBytes - 2 * GIB)
-    : Math.max(0, resources.vramAvailableBytes - GIB)
-  const commitCeiling = Math.max(0, resources.commitAvailableBytes - expectedVramCommit - 2 * GIB)
-  const physicalCeiling = Math.max(0, resources.ramAvailableBytes - 3 * GIB)
-  const safeBytes = Math.floor(Math.min(requestedBytes, commitCeiling, physicalCeiling) / (1024 ** 2)) * 1024 ** 2
-  if (safeBytes >= requestedBytes) return undefined
-  return {
-    budgetBytes: safeBytes,
-    requestedBytes,
-    arguments: [...arguments_, '--set', `device.ram_budget=${safeBytes}`],
-  }
-}
-
 function cleanOutputLine(line: string): string {
   return line.replaceAll(/\u001B\[[0-?]*[ -/]*[@-~]/gu, '').replaceAll('\r', '').trimEnd()
 }
@@ -572,7 +518,6 @@ export class EngineController {
   private currentStatus: EngineRuntimeStatus
   private startupStartedAt: string | undefined
   private startupLines: string[] = []
-  private adjustedRamBudgetBytes: number | undefined
 
   constructor(
     config: EngineConfig,
@@ -707,11 +652,10 @@ export class EngineController {
     return this.statusSnapshot()
   }
 
-  private startupDetails(): Pick<EngineRuntimeStatus, 'startupStartedAt' | 'startupLines' | 'adjustedRamBudgetBytes'> {
+  private startupDetails(): Pick<EngineRuntimeStatus, 'startupStartedAt' | 'startupLines'> {
     return {
       ...(this.startupStartedAt === undefined ? {} : { startupStartedAt: this.startupStartedAt }),
       ...(this.startupLines.length === 0 ? {} : { startupLines: [...this.startupLines] }),
-      ...(this.adjustedRamBudgetBytes === undefined ? {} : { adjustedRamBudgetBytes: this.adjustedRamBudgetBytes }),
     }
   }
 
@@ -842,13 +786,8 @@ export class EngineController {
       }
     }
 
-    const adjustment = automaticRamBudgetAdjustment(this.config.arguments, assessment.resources)
     this.startupStartedAt = new Date().toISOString()
     this.startupLines = []
-    this.adjustedRamBudgetBytes = adjustment?.budgetBytes
-    if (adjustment !== undefined) {
-      this.appendStartupLine(`Compatibility guard: RAM budget reduced from ${formatGiB(adjustment.requestedBytes)} to ${formatGiB(adjustment.budgetBytes)} for the current Windows commit headroom.`)
-    }
     this.setStatus({
       phase: 'starting',
       ready: false,
@@ -858,7 +797,7 @@ export class EngineController {
       ...this.startupDetails(),
       message: 'MoE4All is starting.',
     })
-    const child = this.launch(executable, adjustment?.arguments ?? this.config.arguments)
+    const child = this.launch(executable, this.config.arguments)
     const deadline = Date.now() + this.config.startupTimeoutMs
     while (Date.now() < deadline) {
       if (this.abort.signal.aborted) return { ok: false, status: this.statusSnapshot() }

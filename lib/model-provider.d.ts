@@ -1,3 +1,4 @@
+import { settingsNamespace, type SettingsPathOp } from '@deepseek-ai/dsh-settings';
 import type { EngineLogger } from './engine-controller.js';
 export interface ModelProviderConfig {
     apiKeyEnv?: string;
@@ -12,18 +13,20 @@ export interface DiscoveredModel {
     id: string;
     name: string;
 }
-interface FiberLike {
-    update(config: unknown, noSave?: boolean): void | Promise<void>;
-    await?(): Promise<unknown>;
+export interface ProviderSettingsLike {
+    get(namespace: ReturnType<typeof settingsNamespace>): unknown;
+    mutate(namespace: ReturnType<typeof settingsNamespace>, operations: readonly SettingsPathOp[]): Promise<void>;
 }
-interface LoaderEntryLike {
-    options: {
-        config?: unknown;
+interface ProviderModelProfile {
+    id: string;
+    name: string;
+    contextWindow: number;
+    maxTokens: number;
+    input: ('text' | 'image')[];
+    reasoningEfforts: false | Record<string, string>;
+    compat: {
+        supportsDeveloperRole: false;
     };
-    fiber?: FiberLike;
-}
-export interface LoaderLike {
-    resolve(id: string): LoaderEntryLike;
 }
 interface ProviderProfile {
     displayName: string;
@@ -33,35 +36,29 @@ interface ProviderProfile {
     defaultContextWindow: number;
     defaultMaxTokens: number;
     defaultInput: ('text' | 'image')[];
-    models: Array<{
-        id: string;
-        name: string;
-        contextWindow: number;
-        maxTokens: number;
-        input: ('text' | 'image')[];
-        reasoningEfforts: false;
-    }>;
+    compat: {
+        supportsDeveloperRole: false;
+    };
+    models: ProviderModelProfile[];
 }
 export declare function discoverModels(endpoint: URL, config?: ModelProviderConfig, parentSignal?: AbortSignal): Promise<DiscoveredModel[]>;
 export declare function providerProfile(endpoint: URL, models: DiscoveredModel[], config?: ModelProviderConfig): ProviderProfile;
 export declare class ModelProviderBridge {
-    private readonly loader;
+    private readonly settings;
     private readonly endpoint;
     private readonly config;
     private readonly logger;
     private readonly abort;
-    private entry?;
-    private originalConfig;
     private signature;
     private lastError;
     private syncInFlight;
-    private didUpdate;
     private discovered;
-    constructor(loader: LoaderLike, endpoint: URL, config: ModelProviderConfig, logger: EngineLogger);
+    constructor(settings: ProviderSettingsLike, endpoint: URL, config: ModelProviderConfig, logger: EngineLogger);
     run(): Promise<void>;
     get models(): DiscoveredModel[];
     refreshNow(): Promise<void>;
     private syncOnce;
+    activateDefaultModel(): Promise<void>;
     dispose(): Promise<void>;
 }
 export {};

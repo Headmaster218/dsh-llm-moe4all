@@ -66,7 +66,6 @@ export interface EngineRuntimeStatus {
     processes?: RunningProcess[];
     startupStartedAt?: string;
     startupLines?: string[];
-    adjustedRamBudgetBytes?: number;
 }
 export interface EngineStartResult {
     ok: boolean;
@@ -123,7 +122,6 @@ export declare class EngineController {
     private currentStatus;
     private startupStartedAt;
     private startupLines;
-    private adjustedRamBudgetBytes;
     constructor(config: EngineConfig, logger?: EngineLogger, dependencies?: Partial<EngineControllerDependencies>);
     statusSnapshot(): EngineRuntimeStatus;
     get ownsProcess(): boolean;

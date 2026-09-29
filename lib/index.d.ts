@@ -145,5 +145,5 @@ export { ENGINE_PATHS, isLoopbackRequest, makeEngineRoutes } from './host-routes
 export { ModelDownloadManager, RECOMMENDED_MODELS } from './model-download.js';
 export type { ModelDownloadProgress, RecommendedModel, RecommendedModelKind } from './model-download.js';
 export { discoverModels, ModelProviderBridge, providerProfile } from './model-provider.js';
-export type { DiscoveredModel, LoaderLike, ModelProviderConfig } from './model-provider.js';
+export type { DiscoveredModel, ModelProviderConfig, ProviderSettingsLike } from './model-provider.js';
 //# sourceMappingURL=index.d.ts.map
