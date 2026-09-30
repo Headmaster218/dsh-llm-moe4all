@@ -6,6 +6,7 @@ import {
   composeEditor,
   editorFromConfig,
   modelDirectoriesFromConfig,
+  modelScanDirectories,
   parseExtraArguments,
   setArgument,
 } from '../src/client/workspace-model.js'
@@ -109,9 +110,21 @@ test('invalid remote endpoints fail before settings are persisted', () => {
   assert.equal(composeEditor(editor).endpoint, 'https://example.com/v1')
 })
 
-test('model discovery locations migrate from the download directory and preserve an explicit empty list', () => {
-  assert.deepEqual(modelDirectoriesFromConfig({ modelDirectory: 'D:\\Models' }), ['D:\\Models'])
-  assert.deepEqual(modelDirectoriesFromConfig({ modelDirectories: [], modelDirectoriesConfigured: true }, 'D:\\Default'), [])
+test('the download directory is an implicit scan location, separate from explicit discovery locations', () => {
+  assert.deepEqual(modelDirectoriesFromConfig({ modelDirectory: 'D:\\Models' }), [])
+  assert.deepEqual(modelScanDirectories({ modelDirectory: 'D:\\Models' }), ['D:\\Models'])
+  assert.deepEqual(
+    modelScanDirectories({ modelDirectories: [], modelDirectoriesConfigured: true }, 'D:\\Default'),
+    ['D:\\Default'],
+  )
+  assert.deepEqual(
+    modelDirectoriesFromConfig({
+      modelDirectory: 'D:\\Models',
+      modelDirectories: ['d:/models', 'E:\\Other'],
+      modelDirectoriesConfigured: true,
+    }),
+    ['E:\\Other'],
+  )
   assert.deepEqual(
     editorFromConfig({
       modelDirectories: ['D:\\Models', 'd:/models', ' E:\\Other '],

@@ -9,6 +9,7 @@ import {
   endpointFromConfig,
   parseTasklistCsv,
   probeHealth,
+  runtimeLogFilter,
   validateEndpoint,
   type EngineControllerDependencies,
   type ResourceSnapshot,
@@ -71,6 +72,13 @@ test('tasklist CSV parsing is independent of localized column headings', () => {
     { name: 'infr.exe', pid: 4212 },
     { name: 'other.exe', pid: 99 },
   ])
+})
+
+test('managed output capture keeps server metrics visible under restrictive host logging', () => {
+  assert.equal(runtimeLogFilter(undefined), undefined)
+  assert.equal(runtimeLogFilter('warn'), 'warn,infr_server=info')
+  assert.equal(runtimeLogFilter('warn,infr_server=warn'), 'warn,infr_server=warn,infr_server=info')
+  assert.equal(runtimeLogFilter('warn,infr_server=debug'), 'warn,infr_server=debug')
 })
 
 test('connect mode reuses a healthy engine', async () => {

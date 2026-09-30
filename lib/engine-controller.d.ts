@@ -102,6 +102,7 @@ export declare const DEFAULT_CONFIG: {
     readonly stopOnUnload: true;
     readonly logOutput: true;
 };
+export declare function runtimeLogFilter(value: string | undefined): string | undefined;
 type ResolvedEngineConfig = {
     [Key in keyof Required<EngineConfig>]: Required<EngineConfig>[Key];
 };

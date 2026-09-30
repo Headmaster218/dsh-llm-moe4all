@@ -132,6 +132,15 @@ export const DEFAULT_CONFIG = {
   logOutput: true,
 } as const satisfies Required<EngineConfig>
 
+export function runtimeLogFilter(value: string | undefined): string | undefined {
+  const current = value?.trim()
+  if (!current) return undefined
+  if (current.split(',').some(directive => /^infr_server=(?:info|debug|trace)$/iu.test(directive.trim()))) {
+    return current
+  }
+  return `${current},infr_server=info`
+}
+
 type ResolvedEngineConfig = {
   [Key in keyof Required<EngineConfig>]: Required<EngineConfig>[Key]
 }
@@ -858,10 +867,19 @@ export class EngineController {
   private launch(executable: string, arguments_: string[], apiKey?: string): ChildProcess {
     const persistent = !this.config.stopOnUnload
     const captureOutput = !persistent
+    const environment: NodeJS.ProcessEnv = {
+      ...process.env,
+      ...(apiKey ? { INFR_API_KEY: apiKey } : {}),
+    }
+    if (captureOutput) {
+      const rustLog = runtimeLogFilter(environment.RUST_LOG)
+      if (rustLog !== undefined) environment.RUST_LOG = rustLog
+      environment.INFR_SERVE_STATS_SECS ??= '1'
+    }
     this.logger.info(`Starting MoE4All engine: ${executable}`)
     this.child = spawn(executable, arguments_, {
       cwd: this.config.workingDirectory || undefined,
-      env: { ...process.env, ...(apiKey ? { INFR_API_KEY: apiKey } : {}) },
+      env: environment,
       shell: false,
       windowsHide: true,
       detached: persistent,

@@ -59,6 +59,23 @@ export function ModelLibraryView({
   }
   return (
     <section className="m4a-library">
+      <div className="m4a-section-heading">
+        <h3>
+          {t('modelsTab')}{' '}
+          <span className="m4a-count">{w.library.models.filter((item) => item.complete).length}</span>
+        </h3>
+        <div className="m4a-inline">
+          <IconButton
+            icon={RefreshCw}
+            label={t('rescanModels')}
+            disabled={w.scanning}
+            onClick={() => void w.scan()}
+          />
+          <Button icon={Plus} onClick={onImport}>
+            {t('importModel')}
+          </Button>
+        </div>
+      </div>
       <div className="m4a-model-locations">
         <div className="m4a-location-block">
           <div className="m4a-location-copy">
@@ -93,23 +110,6 @@ export function ModelLibraryView({
             ))}
           </div>
           <small>{t('removeDiscoveryPathHelp')}</small>
-        </div>
-      </div>
-      <div className="m4a-section-heading">
-        <h3>
-          {t('modelsTab')}{' '}
-          <span className="m4a-count">{w.library.models.filter((item) => item.complete).length}</span>
-        </h3>
-        <div className="m4a-inline">
-          <IconButton
-            icon={RefreshCw}
-            label={t('rescanModels')}
-            disabled={w.scanning}
-            onClick={() => void w.scan()}
-          />
-          <Button icon={Plus} onClick={onImport}>
-            {t('importModel')}
-          </Button>
         </div>
       </div>
       <div className="m4a-search">

@@ -39,13 +39,18 @@ export function normalizedModelDirectories(paths: readonly string[]): string[] {
 }
 export function modelDirectoriesFromConfig(
   config: Pick<Config, 'modelDirectory' | 'modelDirectories' | 'modelDirectoriesConfigured'>,
+): string[] {
+  const downloadDirectory = config.modelDirectory?.trim()
+  return normalizedModelDirectories(config.modelDirectories ?? []).filter(
+    path => !downloadDirectory || !samePath(path, downloadDirectory),
+  )
+}
+export function modelScanDirectories(
+  config: Pick<Config, 'modelDirectory' | 'modelDirectories' | 'modelDirectoriesConfigured'>,
   fallback = '',
 ): string[] {
-  if (config.modelDirectoriesConfigured || (config.modelDirectories?.length ?? 0) > 0) {
-    return normalizedModelDirectories(config.modelDirectories ?? [])
-  }
-  const legacy = config.modelDirectory?.trim() || fallback.trim()
-  return legacy ? [legacy] : []
+  const downloadDirectory = config.modelDirectory?.trim() || fallback.trim()
+  return normalizedModelDirectories([downloadDirectory, ...modelDirectoriesFromConfig(config)])
 }
 export const formatBytes = (value: number): string =>
   value >= 1024 ** 3 ? `${(value / 1024 ** 3).toFixed(1)} GiB` : `${(value / 1024 ** 2).toFixed(0)} MiB`

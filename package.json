@@ -1,6 +1,6 @@
 {
   "name": "dsh-llm-moe4all",
-  "version": "0.2.0-alpha.9",
+  "version": "0.2.0-alpha.10",
   "description": "DeepSeek Harness plugin for connecting to and managing a local MoE4All inference engine.",
   "license": "Apache-2.0",
   "author": "John / Headmaster218",
