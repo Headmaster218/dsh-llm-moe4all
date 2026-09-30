@@ -69,6 +69,15 @@ declare const copy: {
     readonly customArguments: readonly ["Additional engine arguments", "额外引擎参数"];
     readonly launchPreview: readonly ["Launch command", "启动命令预览"];
     readonly modelDirectoryLabel: readonly ["Model storage", "模型存放目录"];
+    readonly downloadLocation: readonly ["Download location", "下载位置"];
+    readonly downloadLocationHelp: readonly ["Recommended models are saved here.", "推荐模型会下载到这里。"];
+    readonly discoveryLocations: readonly ["Local discovery locations", "本地发现位置"];
+    readonly discoveryLocationsHelp: readonly ["MoE4All scans these locations for GGUF models.", "MoE4All 会从这些位置中查找 GGUF 模型。"];
+    readonly changePath: readonly ["Change", "修改"];
+    readonly addDiscoveryPath: readonly ["Add location", "添加位置"];
+    readonly noDiscoveryPaths: readonly ["No local discovery locations.", "尚未添加本地发现位置。"];
+    readonly removeDiscoveryPath: readonly ["Remove saved location", "移除保存的位置"];
+    readonly removeDiscoveryPathHelp: readonly ["Removing a location never deletes model files.", "移除只会删除保存的 PATH，不会删除任何模型文件。"];
     readonly searchModels: readonly ["Search models or quantization", "搜索模型或量化"];
     readonly filterAll: readonly ["All", "全部"];
     readonly filterLocal: readonly ["On this computer", "本地"];

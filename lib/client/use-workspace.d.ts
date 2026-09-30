@@ -34,6 +34,7 @@ export declare function useWorkspace(props: Moe4AllSettingsProps): {
     library: LocalModelLibrary;
     download: ModelDownloadProgress;
     directory: string;
+    directories: string[];
     nativePicker: boolean;
     apiKey: ApiKeyStatus | null;
     working: string;
@@ -61,7 +62,9 @@ export declare function useWorkspace(props: Moe4AllSettingsProps): {
     selectModel: (path: string, kind: ModelFileKind) => void;
     importPath: (path: string, kind?: ModelFileKind) => Promise<boolean>;
     pickFile: (kind?: ModelFileKind) => Promise<boolean>;
-    pickDirectory: () => Promise<boolean>;
+    pickDownloadDirectory: () => Promise<boolean>;
+    addDiscoveryDirectory: () => Promise<boolean>;
+    removeDiscoveryDirectory: (path: string) => Promise<boolean>;
     downloadModel: (model: RecommendedModel) => Promise<boolean>;
     stopDownload: () => Promise<boolean>;
     revert: () => void;

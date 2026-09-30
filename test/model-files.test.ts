@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
-import { discoverLocalModelFiles, discoverModelLibrary, validateSetupModelPaths } from '../src/model-files.js'
+import { discoverLocalModelFiles, discoverModelLibraries, discoverModelLibrary, validateSetupModelPaths } from '../src/model-files.js'
 
 test('model discovery classifies direct GGUF files and keeps only the first main shard', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'moe4all-models-'))
@@ -91,4 +91,20 @@ test('missing storage directories are empty and incomplete shard groups are not 
     assert.equal(model.complete, false)
     await assert.rejects(validateSetupModelPaths({ main: model.path }), /Missing model shard/)
   } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('model library merges multiple saved discovery locations', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'moe4all-library-paths-'))
+  try {
+    const first = join(root, 'first')
+    const second = join(root, 'second')
+    await Promise.all([mkdir(first), mkdir(second)])
+    await writeFile(join(first, 'alpha-Q8_0.gguf'), 'alpha')
+    await writeFile(join(second, 'beta-F16.gguf'), 'beta')
+    const result = await discoverModelLibraries([first, second, first])
+    assert.deepEqual(result.directories, [first, second])
+    assert.deepEqual(result.models.map(model => model.name).sort(), ['alpha-Q8_0', 'beta-F16'])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })

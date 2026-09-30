@@ -31,7 +31,7 @@ export declare function installLocalEngine(path: string): Promise<void>;
 export declare function cancelEngineInstall(): Promise<EngineInstallProgress>;
 export declare function deleteEngineVersion(tag: string): Promise<void>;
 export declare function scanModelPath(path: string): Promise<LocalModelFiles>;
-export declare function scanModelLibrary(directory: string, selectedPaths: string[]): Promise<LocalModelLibrary>;
+export declare function scanModelLibrary(directories: string[], selectedPaths: string[]): Promise<LocalModelLibrary>;
 export declare function validateModelPaths(paths: SetupModelPaths): Promise<SetupModelPaths>;
 export declare function pickModelFile(): Promise<string | undefined>;
 export declare function fetchModelCatalog(): Promise<ModelCatalogResponse>;

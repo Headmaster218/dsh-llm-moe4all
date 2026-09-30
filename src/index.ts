@@ -17,6 +17,8 @@ export const SETTINGS_NAMESPACE = settingsNamespace('moe4all-engine')
 
 export interface Config extends EngineConfig, ModelProviderConfig {
   modelDirectory?: string
+  modelDirectories?: string[]
+  modelDirectoriesConfigured?: boolean
   statusDisplay?: 'hover' | 'always' | 'hidden'
 }
 
@@ -46,6 +48,8 @@ export const Config = z.object({
   contextWindow: z.number().step(1).min(1).default(163_840),
   maxTokens: z.number().step(1).min(1).default(102_400),
   modelDirectory: z.string().role('path').default(''),
+  modelDirectories: z.array(z.string()).default([]),
+  modelDirectoriesConfigured: z.boolean().default(false),
   vision: z.boolean().default(true),
   excludeModelNameContains: z.array(z.string()).default(['embed', 'embedding']),
   modelRefreshIntervalMs: z.number().step(1).min(1_000).default(15_000),
@@ -100,7 +104,13 @@ async function stopRuntime(runtime: ActiveRuntime, forceStop = false): Promise<v
 }
 
 function configSignature(config: Config): string {
-  const { modelDirectory: _, statusDisplay: __, ...runtime } = config
+  const {
+    modelDirectory: _,
+    modelDirectories: __,
+    modelDirectoriesConfigured: ___,
+    statusDisplay: ____,
+    ...runtime
+  } = config
   return JSON.stringify(runtime)
 }
 

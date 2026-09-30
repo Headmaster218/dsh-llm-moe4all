@@ -8,7 +8,7 @@ import type { EngineConfig, EngineController, EngineRuntimeStatus, EngineStartRe
 import type { EngineReleaseManager, EngineReleaseStatus } from './engine-release.js'
 import type { ModelDownloadManager } from './model-download.js'
 import type { DiscoveredModel } from './model-provider.js'
-import { discoverLocalModelFiles, discoverModelLibrary, type LocalModelFiles, type SetupModelPaths, validateSetupModelPaths } from './model-files.js'
+import { discoverLocalModelFiles, discoverModelLibraries, type LocalModelFiles, type SetupModelPaths, validateSetupModelPaths } from './model-files.js'
 import { nativeFilePickerAvailable, pickGgufFile } from './native-file-picker.js'
 
 export const ENGINE_PATHS = {
@@ -294,14 +294,23 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
     if (!method(request, response, 'POST') || !fenced(request, response)) return
     const body = await readJson(request)
     const directory = body?.directory
+    const directories = body?.directories
     const selectedPaths = body?.selectedPaths
-    if (typeof directory !== 'string'
+    const validDirectories = directories === undefined
+      ? typeof directory === 'string'
+      : Array.isArray(directories)
+        && directories.length <= 16
+        && directories.every(item => typeof item === 'string')
+    if (!validDirectories
       || (selectedPaths !== undefined && (!Array.isArray(selectedPaths) || selectedPaths.some(item => typeof item !== 'string')))) {
-      writeJson(response, 400, { ok: false, code: 'invalid-model-library', message: 'A model directory and string path list are required.' })
+      writeJson(response, 400, { ok: false, code: 'invalid-model-library', message: 'Up to 16 model directories and a string path list are required.' })
       return
     }
     try {
-      const library = await discoverModelLibrary(directory, selectedPaths as string[] | undefined)
+      const library = await discoverModelLibraries(
+        (directories ?? [directory]) as string[],
+        selectedPaths as string[] | undefined,
+      )
       writeJson(response, 200, { ok: true, library })
     } catch (error) {
       writeJson(response, 400, { ok: false, code: 'model-library-failed', message: error instanceof Error ? error.message : String(error) })

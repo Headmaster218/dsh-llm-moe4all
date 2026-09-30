@@ -49,7 +49,7 @@ export interface Moe4AllSettingsInjected {
 export type Moe4AllSettingsProps = PropsRuntime<'settings.section'> &
   PropsLocale<'settings.moe4all'> &
   InjectFace<Moe4AllSettingsInjected>
-type Tab = 'run' | 'models' | 'engines' | 'diagnostics'
+type Tab = 'run' | 'engines' | 'diagnostics'
 type Confirmation = { kind: 'stop' | 'restart' | 'discard' } | { kind: 'delete'; version: InstalledEngine }
 const phases: Record<string, Moe4AllLocaleKey> = {
   ready: 'readyStatus',
@@ -67,6 +67,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
   const w = useWorkspace(props)
   const { t } = props
   const root = useRef<HTMLDivElement>(null)
+  const modelLibrary = useRef<HTMLElement>(null)
   const [tab, setTab] = useState<Tab>('run')
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
   const [importKind, setImportKind] = useState<ModelFileKind | null>(null)
@@ -74,7 +75,6 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
   const [advanced, setAdvanced] = useState(false)
   const [copied, setCopied] = useState(false)
   const [clock, setClock] = useState(Date.now())
-  const hadModel = useRef(false)
   useEffect(() => {
     const dialog = root.current?.closest('[role="dialog"]')
     let options = root.current?.parentElement
@@ -107,15 +107,6 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
     const timer = setInterval(() => setClock(Date.now()), 1000)
     return () => clearInterval(timer)
   }, [])
-  useEffect(() => {
-    const editor = w.editor
-    if (!editor || editor.config.mode === 'connect') return
-    const modelSelected = !!editor.setup.model
-    if (modelSelected && !hadModel.current && w.download.stage === 'complete') {
-      setTab('run')
-    }
-    hadModel.current = modelSelected
-  }, [w.editor?.config.executable, w.editor?.config.mode, w.editor?.setup.model, w.download.stage])
   if (!w.editor)
     return (
       <div className="m4a-workspace" ref={root}>
@@ -171,6 +162,10 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
             : w.dirty
               ? 'saveStart'
               : 'startNow'
+  const showModelLibrary = () => {
+    setTab('run')
+    setTimeout(() => modelLibrary.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+  }
   const primaryAction = () => {
     if (needsRestart) {
       setConfirmation({ kind: 'restart' })
@@ -185,7 +180,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
       return
     }
     if (!modelSelected) {
-      setTab('models')
+      showModelLibrary()
       return
     }
     void w.launch()
@@ -243,7 +238,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
             <strong>{t('modelEmpty')}</strong>
           )}
         </div>
-        <IconButton icon={ChevronRight} label={t('changeModel')} onClick={() => setTab('models')} />
+        <IconButton icon={ChevronRight} label={t('changeModel')} onClick={showModelLibrary} />
       </div>
       {modelSelected && (
         <details className="m4a-model-path">
@@ -422,7 +417,6 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
         {(
           [
             { id: 'run', label: 'runTab', icon: Play },
-            { id: 'models', label: 'modelsTab', icon: Layers3 },
             { id: 'engines', label: 'enginesTab', icon: Package },
             { id: 'diagnostics', label: 'diagnosticsTab', icon: Terminal },
           ] as const
@@ -621,8 +615,8 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
           {local ? (
             <div className="m4a-run-layout">
               {runConfig}
-              <aside className="m4a-run-library">
-                <ModelLibraryView workspace={w} t={t} compact onImport={() => setImportKind('main')} />
+              <aside className="m4a-run-library" ref={modelLibrary}>
+                <ModelLibraryView workspace={w} t={t} onImport={() => setImportKind('main')} />
               </aside>
             </div>
           ) : (
@@ -657,14 +651,6 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
           )}
         </>
         )
-      )}
-      {tab === 'models' && (
-        <ModelLibraryView
-          workspace={w}
-          t={t}
-          onImport={() => setImportKind('main')}
-          onSelected={() => setTab('run')}
-        />
       )}
       {tab === 'engines' && (
         <EngineVersionsView
@@ -826,7 +812,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
             <Button
               icon={ArrowDownToLine}
               onClick={() => {
-                setTab('models')
+                showModelLibrary()
                 setImportKind(null)
               }}
             >

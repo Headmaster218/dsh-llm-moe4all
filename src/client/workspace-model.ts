@@ -6,9 +6,13 @@ import { buildEngineArguments, parseEngineArguments, unmanagedArguments } from '
 import { formatTokenValue, parseTokenValue } from './token-value.js'
 
 export function editorFromConfig(config: Config) {
+  const modelDirectories = config.modelDirectories === undefined
+    ? undefined
+    : normalizedModelDirectories(config.modelDirectories)
   const normalized: Config = {
     ...config,
     mode: config.mode === 'managed' ? 'prompt' : (config.mode ?? 'prompt'),
+    ...(modelDirectories === undefined ? {} : { modelDirectories }),
   }
   return {
     config: normalized,
@@ -25,6 +29,24 @@ export const equal = (left: unknown, right: unknown): boolean =>
 export const fileName = (path: string): string => path.split(/[\\/]/u).at(-1) ?? path
 export const samePath = (left: string, right: string): boolean =>
   left.replaceAll('\\', '/').toLowerCase() === right.replaceAll('\\', '/').toLowerCase()
+export function normalizedModelDirectories(paths: readonly string[]): string[] {
+  const result: string[] = []
+  for (const raw of paths) {
+    const path = raw.trim()
+    if (path && !result.some(item => samePath(item, path))) result.push(path)
+  }
+  return result
+}
+export function modelDirectoriesFromConfig(
+  config: Pick<Config, 'modelDirectory' | 'modelDirectories' | 'modelDirectoriesConfigured'>,
+  fallback = '',
+): string[] {
+  if (config.modelDirectoriesConfigured || (config.modelDirectories?.length ?? 0) > 0) {
+    return normalizedModelDirectories(config.modelDirectories ?? [])
+  }
+  const legacy = config.modelDirectory?.trim() || fallback.trim()
+  return legacy ? [legacy] : []
+}
 export const formatBytes = (value: number): string =>
   value >= 1024 ** 3 ? `${(value / 1024 ** 3).toFixed(1)} GiB` : `${(value / 1024 ** 2).toFixed(0)} MiB`
 export function argumentValue(args: string[], option: string): string {

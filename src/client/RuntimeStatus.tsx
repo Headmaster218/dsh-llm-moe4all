@@ -4,6 +4,7 @@ import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
 
 import type { Config } from '../index.js'
 import type { EngineControlStatus } from '../host-routes.js'
+import { runtimeActivity } from '../runtime-metrics.js'
 import { fetchEngineStatus } from './engine-api.js'
 import type { Translate } from './workspace-ui.js'
 
@@ -14,8 +15,7 @@ function speed(value: number): string {
 export function RuntimeMetrics({ status, t }: { status: EngineControlStatus | null; t: Translate }) {
   const metrics = status?.metrics
   if (!status?.ready || metrics === undefined) return null
-  const prefill = metrics.requests.find((request) => request.phase === 'prefill')
-  const decodes = metrics.requests.filter((request) => request.phase === 'decode')
+  const activity = runtimeActivity(metrics)
   return (
     <div className="m4a-metrics" role="status">
       <div>
@@ -24,13 +24,13 @@ export function RuntimeMetrics({ status, t }: { status: EngineControlStatus | nu
       </div>
       <div>
         <span>{t('realtimePrefill')}</span>
-        <strong>{prefill ? speed(metrics.prefillTps) : '-'}</strong>
+        <strong>{activity.prefill ? speed(activity.prefillTps) : '-'}</strong>
       </div>
       <div>
         <span>{t('realtimeDecode')}</span>
-        <strong>{decodes.length > 0 ? speed(metrics.decodeTps) : '-'}</strong>
+        <strong>{activity.decode ? speed(activity.decodeTps) : '-'}</strong>
       </div>
-      {decodes.map((request) => (
+      {activity.decodes.map((request) => (
         <div key={request.id}>
           <span>#{request.id} Decode</span>
           <strong>{speed(request.decodeTps)}</strong>
@@ -66,20 +66,22 @@ export function RuntimeStatusDock({ scope, t }: { scope: SettingsScope<Config>; 
   }, [display])
   if (display === 'hidden' || !status?.ready) return null
   const metrics = status.metrics
-  const activePrefill = metrics?.requests.some((request) => request.phase === 'prefill') === true
-  const decodes = metrics?.requests.filter((request) => request.phase === 'decode') ?? []
+  const activity = runtimeActivity(metrics)
   return (
     <div className={`m4a-live-status m4a-live-status--${display}`} tabIndex={0}>
       <div className="m4a-live-summary">
         <Activity size={12} />
         <strong>{t('runningStatus')}</strong>
         <span>{metrics?.active ?? 0}/{metrics?.slots ?? 0} {t('runtimeSlots')}</span>
-        {activePrefill && <span>Prefill {speed(metrics?.prefillTps ?? 0)}</span>}
-        {decodes.length > 0 && <span>Decode {speed(metrics?.decodeTps ?? 0)}</span>}
+        {activity.prefill && <span>Prefill {speed(activity.prefillTps)}</span>}
+        {activity.decode && <span>Decode {speed(activity.decodeTps)}</span>}
       </div>
       <div className="m4a-live-details">
-        {decodes.length === 0 && !activePrefill && <span>{t('idleMetrics')}</span>}
-        {decodes.map((request) => (
+        {!activity.active && <span>{t('idleMetrics')}</span>}
+        {activity.active && !activity.prefill && !activity.decode && <span>{t('startingStatus')}</span>}
+        {activity.prefill && <span>Prefill {speed(activity.prefillTps)}</span>}
+        {activity.decode && activity.decodes.length === 0 && <span>Decode {speed(activity.decodeTps)}</span>}
+        {activity.decodes.map((request) => (
           <span key={request.id}>#{request.id} {speed(request.decodeTps)}</span>
         ))}
       </div>

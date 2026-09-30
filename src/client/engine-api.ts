@@ -113,10 +113,10 @@ export async function scanModelPath(path: string): Promise<LocalModelFiles> {
   return result.files
 }
 
-export async function scanModelLibrary(directory: string, selectedPaths: string[]): Promise<LocalModelLibrary> {
+export async function scanModelLibrary(directories: string[], selectedPaths: string[]): Promise<LocalModelLibrary> {
   const result = await json<{ ok: boolean, library: LocalModelLibrary }>('/api/moe4all/model-library', {
     method: 'POST',
-    body: JSON.stringify({ directory, selectedPaths }),
+    body: JSON.stringify({ directories, selectedPaths }),
   })
   return result.library
 }

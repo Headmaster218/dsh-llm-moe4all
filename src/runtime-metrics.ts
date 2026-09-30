@@ -22,6 +22,48 @@ export interface EngineRuntimeMetrics {
   updatedAt?: string
 }
 
+export interface RuntimeActivity {
+  fresh: boolean
+  active: boolean
+  prefill: boolean
+  decode: boolean
+  prefillTps: number
+  decodeTps: number
+  decodes: RuntimeRequestMetrics[]
+}
+
+export function runtimeActivity(
+  metrics: EngineRuntimeMetrics | undefined,
+  now = Date.now(),
+  staleAfterMs = 12_000,
+): RuntimeActivity {
+  if (metrics === undefined) {
+    return { fresh: false, active: false, prefill: false, decode: false, prefillTps: 0, decodeTps: 0, decodes: [] }
+  }
+  const updated = metrics.updatedAt === undefined ? Number.NaN : Date.parse(metrics.updatedAt)
+  const age = now - updated
+  const fresh = Number.isFinite(age) && age >= -1_000 && age <= staleAfterMs
+  const requests = fresh ? metrics.requests : []
+  const prefills = requests.filter(request => request.phase === 'prefill')
+  const decodes = requests.filter(request => request.phase === 'decode')
+  const active = fresh && (metrics.active > 0 || metrics.queued > 0 || requests.length > 0)
+  const prefillTps = metrics.prefillTps > 0
+    ? metrics.prefillTps
+    : prefills.reduce((sum, request) => sum + request.prefillTps, 0)
+  const decodeTps = metrics.decodeTps > 0
+    ? metrics.decodeTps
+    : decodes.reduce((sum, request) => sum + request.decodeTps, 0)
+  return {
+    fresh,
+    active,
+    prefill: active && (prefills.length > 0 || prefillTps > 0),
+    decode: active && (decodes.length > 0 || decodeTps > 0),
+    prefillTps,
+    decodeTps,
+    decodes,
+  }
+}
+
 function numberField(line: string, name: string): number | undefined {
   const match = new RegExp(`(?:^|\\s)${name}=(?:\")?(-?\\d+(?:\\.\\d+)?)(?:\")?(?=\\s|$)`, 'u').exec(line)
   if (match?.[1] === undefined) return undefined
@@ -87,6 +129,7 @@ export class RuntimeMetricsTracker {
       if (id !== undefined) {
         this.requests.set(id, emptyRequest(id))
         this.active = this.requests.size
+        this.updatedAt = now.toISOString()
       }
       return
     }

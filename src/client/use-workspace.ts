@@ -7,7 +7,14 @@ import type { ModelDownloadProgress, RecommendedModel } from '../model-download.
 import type { LocalModelLibrary, ModelFileKind } from '../model-files.js'
 import type { Moe4AllSettingsProps } from './Moe4AllSettings.js'
 import * as api from './engine-api.js'
-import { composeEditor, editorFromConfig, equal, type Editor } from './workspace-model.js'
+import {
+  composeEditor,
+  editorFromConfig,
+  equal,
+  modelDirectoriesFromConfig,
+  normalizedModelDirectories,
+  type Editor,
+} from './workspace-model.js'
 import { normalizeSetupPath } from './engine-setup.js'
 import type { Translate } from './workspace-ui.js'
 
@@ -39,6 +46,8 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
   const dirtyRef = useRef(dirty)
   dirtyRef.current = dirty
   const directory = editor?.config.modelDirectory || defaultDirectory
+  const directories = modelDirectoriesFromConfig(editor?.config ?? {}, defaultDirectory)
+  const directoryKey = directories.join('\0')
   const previousDownload = useRef('idle')
   const catalogRef = useRef<RecommendedModel[]>([])
   const scanGeneration = useRef(0)
@@ -77,13 +86,13 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
       if (mounted.current) setWorking('')
     }
   }
-  async function scan(path = live.current?.config.modelDirectory || defaultDirectory, selected?: string[]) {
+  async function scan(paths = modelDirectoriesFromConfig(live.current?.config ?? {}, defaultDirectory), selected?: string[]) {
     const generation = ++scanGeneration.current
     setScanning(true)
     const setup = live.current?.setup
     try {
       const result = await api.scanModelLibrary(
-        path,
+        paths,
         selected ??
           (setup
             ? [setup.model, setup.visionModel, setup.mtpModel, setup.embeddingModel].filter(Boolean)
@@ -125,7 +134,12 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
         setDownload(model.value)
         if (model.value.stage === 'complete' && previousDownload.current !== 'complete') {
           const setup = live.current?.setup
-          void scan(model.value.directory, [
+          const nextDirectories = normalizedModelDirectories([
+            ...modelDirectoriesFromConfig(live.current?.config ?? {}, defaultDirectory),
+            model.value.directory ?? '',
+          ])
+          config({ modelDirectories: nextDirectories, modelDirectoriesConfigured: true })
+          void scan(nextDirectories, [
               setup?.model ?? '',
               setup?.visionModel ?? '',
               setup?.mtpModel ?? '',
@@ -169,10 +183,10 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (editor !== null && directory) void scan(directory).catch(report)
+      if (editor !== null) void scan(directories).catch(report)
     }, 350)
     return () => clearTimeout(timer)
-  }, [directory, editor === null])
+  }, [directoryKey, editor === null])
 
   const edit = (update: (previous: Editor) => Editor) =>
     setEditor((previous) => (previous === null ? previous : update(previous)))
@@ -311,7 +325,9 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
       const selected =
         files.selected && files[kind].includes(files.selected) ? files.selected : files[kind][0]
       if (!selected) throw new Error('importError')
-      const result = await scan(directory, [
+      const nextDirectories = normalizedModelDirectories([...directories, files.directory])
+      config({ modelDirectories: nextDirectories, modelDirectoriesConfigured: true })
+      const result = await scan(nextDirectories, [
         ...(live.current
           ? [
               live.current.setup.model,
@@ -338,18 +354,34 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
       const path = await api.pickModelFile()
       if (path) await importPath(path, kind)
     })
-  const pickDirectory = () =>
-    run('directory', async () => {
+  const pickDownloadDirectory = () =>
+    run('download-directory', async () => {
       const path = await props.pickDirectory()
       if (path) {
-        config({ modelDirectory: path })
-        await scan(path)
+        const nextDirectories = normalizedModelDirectories([...directories, path])
+        config({ modelDirectory: path, modelDirectories: nextDirectories, modelDirectoriesConfigured: true })
+        await scan(nextDirectories)
       }
+    })
+  const addDiscoveryDirectory = () =>
+    run('discovery-directory', async () => {
+      const path = await props.pickDirectory()
+      if (!path) return
+      const nextDirectories = normalizedModelDirectories([...directories, path])
+      config({ modelDirectories: nextDirectories, modelDirectoriesConfigured: true })
+      await scan(nextDirectories)
+    })
+  const removeDiscoveryDirectory = (path: string) =>
+    run('discovery-directory', async () => {
+      const nextDirectories = directories.filter(item => item !== path)
+      config({ modelDirectories: nextDirectories, modelDirectoriesConfigured: true })
+      await scan(nextDirectories)
     })
   const downloadModel = (model: RecommendedModel) =>
     run('download', async () => {
       if (!directory) throw new Error('selectDestination')
-      config({ modelDirectory: directory })
+      const nextDirectories = normalizedModelDirectories([...directories, directory])
+      config({ modelDirectory: directory, modelDirectories: nextDirectories, modelDirectoriesConfigured: true })
       setDownload(
         await api.startModelDownload(
           model.id,
@@ -374,6 +406,7 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
     library,
     download,
     directory,
+    directories,
     nativePicker,
     apiKey,
     working,
@@ -404,7 +437,9 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
     selectModel,
     importPath,
     pickFile,
-    pickDirectory,
+    pickDownloadDirectory,
+    addDiscoveryDirectory,
+    removeDiscoveryDirectory,
     downloadModel,
     stopDownload,
     revert: () => {

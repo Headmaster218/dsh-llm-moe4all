@@ -3,19 +3,19 @@ import {
   ArrowDownToLine,
   ArrowUpRight,
   Check,
-  FolderOpen,
   Image,
   Layers3,
   Plus,
   RefreshCw,
   Search,
   Sparkles,
+  Trash2,
   Zap,
   Database,
 } from 'lucide-react'
 import type { Workspace } from './use-workspace.js'
 import { modelLibrary, formatBytes, samePath, type LibraryItem } from './workspace-model.js'
-import { Button, Field, IconButton, type Translate } from './workspace-ui.js'
+import { Button, IconButton, type Translate } from './workspace-ui.js'
 
 export const roleIcon = { main: Layers3, vision: Image, mtp: Zap, embedding: Database }
 export const roleLabel = {
@@ -28,15 +28,11 @@ export const roleLabel = {
 export function ModelLibraryView({
   workspace: w,
   t,
-  compact = false,
   onImport,
-  onSelected,
 }: {
   workspace: Workspace
   t: Translate
-  compact?: boolean
   onImport(): void
-  onSelected?(): void
 }) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
@@ -62,7 +58,43 @@ export function ModelLibraryView({
     return samePath(selected, item.local.path)
   }
   return (
-    <section className={`m4a-library ${compact ? 'm4a-library--compact' : ''}`}>
+    <section className="m4a-library">
+      <div className="m4a-model-locations">
+        <div className="m4a-location-block">
+          <div className="m4a-location-copy">
+            <strong>{t('downloadLocation')}</strong>
+            <span>{t('downloadLocationHelp')}</span>
+          </div>
+          <code title={w.directory}>{w.directory || t('notConfigured')}</code>
+          <Button kind="ghost" disabled={w.disabled} onClick={() => void w.pickDownloadDirectory()}>
+            {t('changePath')}
+          </Button>
+        </div>
+        <div className="m4a-location-block m4a-location-block--discovery">
+          <div className="m4a-location-copy">
+            <strong>{t('discoveryLocations')}</strong>
+            <span>{t('discoveryLocationsHelp')}</span>
+          </div>
+          <Button kind="ghost" disabled={w.disabled} onClick={() => void w.addDiscoveryDirectory()}>
+            {t('addDiscoveryPath')}
+          </Button>
+          <div className="m4a-location-list">
+            {w.directories.length === 0 && <span>{t('noDiscoveryPaths')}</span>}
+            {w.directories.map((path) => (
+              <div key={path}>
+                <code title={path}>{path}</code>
+                <IconButton
+                  icon={Trash2}
+                  label={t('removeDiscoveryPath')}
+                  disabled={w.disabled}
+                  onClick={() => void w.removeDiscoveryDirectory(path)}
+                />
+              </div>
+            ))}
+          </div>
+          <small>{t('removeDiscoveryPathHelp')}</small>
+        </div>
+      </div>
       <div className="m4a-section-heading">
         <h3>
           {t('modelsTab')}{' '}
@@ -80,18 +112,6 @@ export function ModelLibraryView({
           </Button>
         </div>
       </div>
-      {!compact && (
-        <div className="m4a-library-storage">
-          <Field label={t('modelDirectoryLabel')}>
-            <input
-              value={w.directory}
-              onChange={(event) => w.config({ modelDirectory: event.target.value })}
-              onBlur={() => void w.scan()}
-            />
-          </Field>
-          <IconButton icon={FolderOpen} label={t('chooseDirectory')} onClick={() => void w.pickDirectory()} />
-        </div>
-      )}
       <div className="m4a-search">
         <Search size={16} />
         <input
@@ -172,7 +192,6 @@ export function ModelLibraryView({
                             disabled={selected || w.disabled}
                             onClick={() => {
                               w.selectModel(item.local!.path, item.kind)
-                              onSelected?.()
                             }}
                           >
                             {t(selected ? 'usingModel' : 'useSelected')}

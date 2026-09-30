@@ -33,6 +33,9 @@
         logOutput: true
         contextWindow: 163840
         maxTokens: 102400
+        modelDirectory: ''
+        modelDirectories: []
+        modelDirectoriesConfigured: false
         vision: true
         excludeModelNameContains:
           - embed

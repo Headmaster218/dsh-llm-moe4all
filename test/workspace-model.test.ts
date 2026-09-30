@@ -5,6 +5,7 @@ import {
   argumentValue,
   composeEditor,
   editorFromConfig,
+  modelDirectoriesFromConfig,
   parseExtraArguments,
   setArgument,
 } from '../src/client/workspace-model.js'
@@ -106,4 +107,16 @@ test('invalid remote endpoints fail before settings are persisted', () => {
   assert.throws(() => composeEditor(editor), /not loopback/)
   editor.config.allowRemoteEndpoint = true
   assert.equal(composeEditor(editor).endpoint, 'https://example.com/v1')
+})
+
+test('model discovery locations migrate from the download directory and preserve an explicit empty list', () => {
+  assert.deepEqual(modelDirectoriesFromConfig({ modelDirectory: 'D:\\Models' }), ['D:\\Models'])
+  assert.deepEqual(modelDirectoriesFromConfig({ modelDirectories: [], modelDirectoriesConfigured: true }, 'D:\\Default'), [])
+  assert.deepEqual(
+    editorFromConfig({
+      modelDirectories: ['D:\\Models', 'd:/models', ' E:\\Other '],
+      modelDirectoriesConfigured: true,
+    }).config.modelDirectories,
+    ['D:\\Models', 'E:\\Other'],
+  )
 })

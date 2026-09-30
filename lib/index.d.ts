@@ -7,6 +7,8 @@ export declare const inject: string[];
 export declare const SETTINGS_NAMESPACE: import("@deepseek-ai/dsh-settings").SettingsNamespace;
 export interface Config extends EngineConfig, ModelProviderConfig {
     modelDirectory?: string;
+    modelDirectories?: string[];
+    modelDirectoriesConfigured?: boolean;
     statusDisplay?: 'hover' | 'always' | 'hidden';
 }
 export declare const Config: z<Schemastery.ObjectS<{
@@ -35,6 +37,8 @@ export declare const Config: z<Schemastery.ObjectS<{
     contextWindow: z<number, number>;
     maxTokens: z<number, number>;
     modelDirectory: z<string, string>;
+    modelDirectories: z<string[], string[]>;
+    modelDirectoriesConfigured: z<boolean, boolean>;
     vision: z<boolean, boolean>;
     excludeModelNameContains: z<string[], string[]>;
     modelRefreshIntervalMs: z<number, number>;
@@ -66,6 +70,8 @@ export declare const Config: z<Schemastery.ObjectS<{
     contextWindow: z<number, number>;
     maxTokens: z<number, number>;
     modelDirectory: z<string, string>;
+    modelDirectories: z<string[], string[]>;
+    modelDirectoriesConfigured: z<boolean, boolean>;
     vision: z<boolean, boolean>;
     excludeModelNameContains: z<string[], string[]>;
     modelRefreshIntervalMs: z<number, number>;
@@ -102,6 +108,8 @@ declare const plugin: {
         contextWindow: z<number, number>;
         maxTokens: z<number, number>;
         modelDirectory: z<string, string>;
+        modelDirectories: z<string[], string[]>;
+        modelDirectoriesConfigured: z<boolean, boolean>;
         vision: z<boolean, boolean>;
         excludeModelNameContains: z<string[], string[]>;
         modelRefreshIntervalMs: z<number, number>;
@@ -133,6 +141,8 @@ declare const plugin: {
         contextWindow: z<number, number>;
         maxTokens: z<number, number>;
         modelDirectory: z<string, string>;
+        modelDirectories: z<string[], string[]>;
+        modelDirectoriesConfigured: z<boolean, boolean>;
         vision: z<boolean, boolean>;
         excludeModelNameContains: z<string[], string[]>;
         modelRefreshIntervalMs: z<number, number>;

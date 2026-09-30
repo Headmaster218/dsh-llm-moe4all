@@ -13,6 +13,8 @@ export type Editor = ReturnType<typeof editorFromConfig>;
 export declare const equal: (left: unknown, right: unknown) => boolean;
 export declare const fileName: (path: string) => string;
 export declare const samePath: (left: string, right: string) => boolean;
+export declare function normalizedModelDirectories(paths: readonly string[]): string[];
+export declare function modelDirectoriesFromConfig(config: Pick<Config, 'modelDirectory' | 'modelDirectories' | 'modelDirectoriesConfigured'>, fallback?: string): string[];
 export declare const formatBytes: (value: number) => string;
 export declare function argumentValue(args: string[], option: string): string;
 export declare function setArgument(args: string[], option: string, value: string): string[];

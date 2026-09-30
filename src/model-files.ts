@@ -35,6 +35,7 @@ export interface LocalModelEntry {
 
 export interface LocalModelLibrary {
   directory: string
+  directories?: string[]
   models: LocalModelEntry[]
 }
 
@@ -242,6 +243,41 @@ export async function discoverModelLibrary(
     || left.name.localeCompare(right.name, undefined, { sensitivity: 'base', numeric: true })
   ))
   return { directory, models }
+}
+
+export async function discoverModelLibraries(
+  inputs: string[],
+  selectedPaths: string[] = [],
+  limits: Partial<ModelScanLimits> = {},
+): Promise<LocalModelLibrary> {
+  const directories = [...new Map(
+    inputs
+      .map(stripOuterQuotes)
+      .filter(Boolean)
+      .map(path => [resolve(path).toLowerCase(), resolve(path)]),
+  ).values()]
+  const libraries: LocalModelLibrary[] = []
+  if (directories.length === 0) {
+    libraries.push(await discoverModelLibrary('', selectedPaths, limits))
+  } else {
+    for (let index = 0; index < directories.length; index += 1) {
+      libraries.push(await discoverModelLibrary(
+        directories[index]!,
+        index === 0 ? selectedPaths : [],
+        limits,
+      ))
+    }
+  }
+  const models = [...new Map(
+    libraries.flatMap(library => library.models).map(model => [model.id, model]),
+  ).values()]
+  const rank: Record<ModelFileKind, number> = { main: 0, vision: 1, mtp: 2, embedding: 3 }
+  models.sort((left, right) => (
+    left.family.localeCompare(right.family, undefined, { sensitivity: 'base', numeric: true })
+    || rank[left.kind] - rank[right.kind]
+    || left.name.localeCompare(right.name, undefined, { sensitivity: 'base', numeric: true })
+  ))
+  return { directory: directories[0] ?? '', directories, models }
 }
 
 export async function discoverLocalModelFiles(

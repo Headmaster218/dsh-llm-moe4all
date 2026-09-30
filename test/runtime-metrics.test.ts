@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { configuredSlots, RuntimeMetricsTracker } from '../src/runtime-metrics.js'
+import { configuredSlots, runtimeActivity, RuntimeMetricsTracker } from '../src/runtime-metrics.js'
 
 test('runtime metrics track aggregate and per-request speeds', () => {
   const tracker = new RuntimeMetricsTracker(2)
@@ -27,4 +27,22 @@ test('configured slots reads both argument forms', () => {
   assert.equal(configuredSlots(['serve', '--parallel', '2']), 2)
   assert.equal(configuredSlots(['serve', '--parallel=4']), 4)
   assert.equal(configuredSlots(['serve']), 1)
+})
+
+test('runtime activity uses aggregate throughput when per-request progress is unavailable', () => {
+  const now = new Date('2026-09-30T10:00:00.000Z')
+  const tracker = new RuntimeMetricsTracker(2)
+  tracker.ingest('serve stats interval_s=5.0 prefill_tps=688.2 decode_tps=0.0 active=1 queued=0 kv_slots=1/2', now)
+  const activity = runtimeActivity(tracker.snapshot(), now.getTime())
+  assert.equal(activity.active, true)
+  assert.equal(activity.prefill, true)
+  assert.equal(activity.prefillTps, 688.2)
+})
+
+test('runtime activity expires old throughput instead of showing a completed request forever', () => {
+  const now = new Date('2026-09-30T10:00:00.000Z')
+  const tracker = new RuntimeMetricsTracker(2)
+  tracker.ingest('serve stats interval_s=5.0 prefill_tps=0.0 decode_tps=65.4 active=1 queued=0 kv_slots=1/2', now)
+  assert.equal(runtimeActivity(tracker.snapshot(), now.getTime()).decode, true)
+  assert.equal(runtimeActivity(tracker.snapshot(), now.getTime() + 12_001).active, false)
 })

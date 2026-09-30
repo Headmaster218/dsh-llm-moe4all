@@ -19,6 +19,16 @@ export interface EngineRuntimeMetrics {
     requests: RuntimeRequestMetrics[];
     updatedAt?: string;
 }
+export interface RuntimeActivity {
+    fresh: boolean;
+    active: boolean;
+    prefill: boolean;
+    decode: boolean;
+    prefillTps: number;
+    decodeTps: number;
+    decodes: RuntimeRequestMetrics[];
+}
+export declare function runtimeActivity(metrics: EngineRuntimeMetrics | undefined, now?: number, staleAfterMs?: number): RuntimeActivity;
 export declare function configuredSlots(arguments_: readonly string[]): number;
 export declare class RuntimeMetricsTracker {
     readonly slots: number;

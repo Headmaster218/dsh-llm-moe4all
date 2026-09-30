@@ -12,11 +12,9 @@ export declare const roleLabel: {
     readonly mtp: "modelRoleMtp";
     readonly embedding: "modelRoleEmbedding";
 };
-export declare function ModelLibraryView({ workspace: w, t, compact, onImport, onSelected, }: {
+export declare function ModelLibraryView({ workspace: w, t, onImport, }: {
     workspace: Workspace;
     t: Translate;
-    compact?: boolean;
     onImport(): void;
-    onSelected?(): void;
 }): import("react").JSX.Element;
 //# sourceMappingURL=ModelLibraryView.d.ts.map
