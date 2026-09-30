@@ -1,84 +1,154 @@
 # dsh-llm-moe4all
 
-`dsh-llm-moe4all` connects DeepSeek Harness to a MoE4All OpenAI-compatible server and can safely manage a local server process when an executable and arguments are configured.
+`dsh-llm-moe4all` connects DeepSeek Harness (DSH) to a MoE4All OpenAI-compatible server. It can discover models, configure DSH automatically, download and manage local MoE4All Engine releases, and start or stop a guarded local Engine process.
 
-The plugin intentionally delegates chat, tools, images, reasoning blocks, retries, and replay compatibility to DSH's own `@deepseek-ai/dsh-llm-pi-ai` adapter. It owns endpoint and model discovery, guarded local startup, health monitoring, and shutdown.
+Chat, tools, images, reasoning blocks, retries, and replay stay on DSH's own `@deepseek-ai/dsh-llm-pi-ai` adapter. Plugin updates and Engine updates are separate: updating this plugin never replaces the Engine, models, KV cache, or conversations.
 
 Chinese documentation: [README.zh.md](README.zh.md)
 
-## Compatibility
-
-- Tested baseline: DSH `0.1.1-rc.2`, shipped by DSH Desktop `0.6.3`.
-- Current npm latest: DSH `0.1.5-rc.3`.
-- The declared compatibility range also admits the known `0.1.7` prerelease line.
-- Node.js 20 or newer is required.
-
 ## Install
 
-From GitHub during development:
+### Before the DSH catalog listing: one-click Windows install
+
+1. Download [`dsh-llm-moe4all-windows.zip`](https://github.com/Headmaster218/dsh-llm-moe4all/releases/latest/download/dsh-llm-moe4all-windows.zip) from the latest Release.
+2. Extract the ZIP, finish any active DSH work, and fully exit DSH Desktop.
+3. Double-click `Install-MoE4All-Plugin.cmd`.
+4. Restart DSH and open **Settings > MoE4All**.
+
+The installer finds either the `dsh` command or a normal DSH Desktop installation and adds the updateable GitHub source to the `web` profile. It does not require administrator rights.
+
+On newer DSH builds, the same source can be entered in **Plugins > Install external plugin**:
+
+```text
+github:Headmaster218/dsh-llm-moe4all
+```
+
+The equivalent terminal command is:
 
 ```powershell
 dsh plugin --profile web add github:Headmaster218/dsh-llm-moe4all
 ```
 
-After the npm release:
+Restart the profile after installation. DSH loads Bundle membership only at profile startup.
+
+### After the catalog listing
+
+Open **Plugin Market**, search for `MoE4All`, choose `dsh-llm-moe4all`, and click **Install**. Restart DSH when prompted. The npm command will become the preferred terminal path after the package is published:
 
 ```powershell
 dsh plugin --profile web add dsh-llm-moe4all
 ```
 
-The default endpoint is `http://127.0.0.1:8080/v1`. The plugin reads `/v1/models`, filters embedding models, and updates DSH's existing `llm-pi-ai` adapter in memory. The detected model IDs therefore stay accurate without persisting a second adapter configuration.
+### Offline fallback
 
-## Engine modes
+The Release ZIP also contains a prebuilt `dsh-llm-moe4all.tgz`:
 
-- `connect` (default): connect to an already-running server and never start a process.
-- `auto`: reuse a healthy server; otherwise consider starting the configured executable. Unattended startup requires both RAM and live VRAM to be more than 50% free.
-- `managed`: like `auto`, but missing launch configuration is treated as an error.
+```powershell
+powershell.exe -NoLogo -NoProfile -File .\install-plugin.ps1 -Offline
+```
 
-Before any launch, the plugin checks the operating-system process list for `infr.exe`, `moe4all.exe`, and the configured executable name. An existing process prevents a second launch even when it listens on another IP or port. When RAM or VRAM is not more than 50% free, automatic startup pauses and asks for confirmation through the DSH Desktop/Electron dialog, with a native Windows dialog fallback. If no confirmation surface is available, it stays stopped.
+A local tarball cannot follow online updates. Reinstall from GitHub or npm later to restore update tracking.
 
-Automatic launch is also disabled until both `executable` and `arguments` are configured. This prevents an unconfigured `infr.exe` from opening an interactive wizard inside DSH.
+## Quick Start
 
-Example plugin-row override:
+1. Open **Settings > MoE4All**. On first use the plugin downloads the latest compatible Engine with visible progress and retry controls.
+2. Select an existing GGUF model or download one of the recommended model families.
+3. Keep the conservative automatic profile unless you want to tune memory and paging manually.
+4. Click **Run**. The plugin writes the provider configuration, starts the Engine when allowed, and makes discovered models available to DSH.
+
+The default endpoint is `http://127.0.0.1:8080/v1`. Existing servers can be used in connection-only mode, including a custom IP, port, and API key.
+
+## Plugin Updates
+
+When `dshmarket` with the public update API is installed, the plugin checks for its own update shortly after DSH opens. An available update appears as a small non-blocking prompt with progress, retry, and the correct refresh or restart action.
+
+- The updater calls only `/dsh-market/api/v1/*`; it does not spawn a package manager or edit the profile itself.
+- Update checks are silent when DSH Market is absent or its public API is unavailable.
+- The prompt updates only `dsh-llm-moe4all`. Engine releases remain under **Settings > MoE4All > Engine**.
+- An active agent may cause DSH Market to defer the update until the run finishes.
+
+Manual update:
+
+```powershell
+dsh plugin --profile web update dsh-llm-moe4all
+```
+
+Restart the DSH profile after a Bundle update.
+
+## Disable or Uninstall
+
+Use DSH's **Plugins** page to disable the Bundle without removing it. To uninstall it completely from the `web` profile:
+
+```powershell
+dsh plugin --profile web remove dsh-llm-moe4all
+```
+
+Restart DSH afterward. Removal preserves MoE4All Engine files, downloaded models, KV cache, and saved plugin settings so an accidental uninstall does not delete large local data.
+
+## Compatibility
+
+- Verified with DSH `0.1.1-rc.2` (DSH Desktop `0.6.3`) and DSH `0.1.5-rc.3`.
+- The manifest explicitly admits the known DSH `0.1.1` through `0.1.7` prerelease lines.
+- Node.js 20 or newer is required for standalone DSH installations.
+- CI builds, tests, and dry-packs the plugin on every push and pull request.
+
+## Configuration
+
+Most users should configure the plugin in **Settings > MoE4All**. The page covers local or remote connection, model library, conservative/aggressive automatic profiles, context and output limits, MTP, vision, embeddings, KV session cache, Engine versions, startup behavior, and advanced launch arguments.
+
+For deployment automation, the Bundle row remains configurable in YAML:
 
 ```yaml
 - id: moe4all-engine
   config:
     mode: auto
     host: 127.0.0.1
-    port: 1234
-    executable: D:\AIinfr\infr\target\release\infr.exe
+    port: 8080
+    executable: D:\MoE4All\infr.exe
     arguments:
       - serve
-      - --dev
-      - Vulkan1
       - --ctx
       - 160k
       - D:\Models\model.gguf
-    workingDirectory: D:\AIinfr\infr
 ```
 
-`MOE4ALL_ENGINE` can supply the executable path. If neither the setting nor the environment variable is present, the plugin also checks `engine/infr.exe`, the configured working directory, and `PATH`.
+`MOE4ALL_ENGINE` may provide the executable path. A non-loopback endpoint must be explicitly enabled and is always connection-only. API key values are stored through DSH credentials, not in the plugin's ordinary configuration.
 
-`host`, `port`, `protocol`, and `apiBasePath` are independently configurable. The advanced `endpoint` field overrides all four when non-empty. Endpoints are restricted to loopback by default; set `allowRemoteEndpoint: true` only for an intentional remote server. A remote endpoint is connection-only and never causes a local process launch. API keys stay outside the plugin configuration: `apiKeyEnv` names an existing environment variable.
+## Permissions and Data
 
-## Security behavior
+The plugin can:
 
-- No install-time downloads or process execution.
-- Child processes are spawned directly with `shell: false`.
-- Network access is loopback-only unless explicitly enabled.
-- Existing engine processes are detected independently of the configured port.
-- Unattended local launch requires strictly more than 50% free RAM and VRAM.
-- The plugin never stores an API-key value in its configuration.
-- A process started by the plugin is stopped when the plugin unloads by default.
+- read and write its DSH settings and provider rows;
+- inspect local RAM, VRAM, process state, Engine versions, and selected model directories;
+- download user-approved Engine or model files from the URLs shown in the UI;
+- start `infr.exe` directly with `shell: false`, monitor it, and stop only the process it owns;
+- call the configured OpenAI-compatible endpoint, plus GitHub Releases and DSH Market for explicit downloads or update checks.
 
-## Develop
+It does not upload model files, conversation content, or API keys to the plugin repository. Remote endpoint access and non-loopback Engine serving require explicit configuration.
+
+## Troubleshooting
+
+- **Plugin does not appear:** fully restart the DSH profile after install and confirm `dsh-llm-moe4all` is enabled under **Plugins**.
+- **Installer cannot find DSH:** install DSH Desktop, or put `dsh` on `PATH`, then rerun the script. The manual command is printed on failure.
+- **Update prompt never appears:** install or update `dshmarket`; without its public update API, use the manual update command above.
+- **Engine does not start:** open **Settings > MoE4All > Diagnostics** and inspect startup output. Existing MoE4All processes and low free RAM/VRAM intentionally require intervention.
+- **Need to roll back:** use DSH Market's rollback action when offered, or install a known package/tag and restart the profile.
+
+When reporting a bug, include the plugin version, DSH version, operating system, and the relevant diagnostic lines. Remove API keys, private paths, prompts, and other personal data first.
+
+## Development
 
 ```powershell
 npm install
 npm run check
 ```
 
-## License
+The repository includes compiled `lib/` output so GitHub installs do not need install-time build approval. Release tags run the same checks, create a prebuilt `.tgz`, create the one-click Windows ZIP, publish SHA-256 hashes, and open the GitHub Release.
+
+For catalog submission, the repository already declares `dsh.bundle`, uses the `dsh-plugin` topic, and fits the `model` category. The catalog entry should point to the repository root and describe only the local MoE4All provider and Engine management behavior implemented here.
+
+## License and Security
 
 Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Report ordinary bugs through [GitHub Issues](https://github.com/Headmaster218/dsh-llm-moe4all/issues). Do not post credentials or private data. For a security issue, use GitHub's private vulnerability reporting surface when available; otherwise contact the maintainer privately before opening a public issue.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0-alpha.15
+
+- Add automatic plugin update discovery, progress, retry, and restart/refresh prompts through the public DSH Market API.
+- Add a Release workflow that publishes a prebuilt package, SHA-256 hashes, and a one-click Windows installer ZIP.
+- Expand the English and Chinese READMEs with catalog-ready installation, upgrade, uninstall, permissions, troubleshooting, and security guidance.
+
 ## 0.1.0-alpha.1
 
 - Add the installable DSH bundle and default local MoE4All model route.

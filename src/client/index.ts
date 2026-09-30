@@ -1,4 +1,4 @@
-import { createElement } from 'react'
+import { createElement, Fragment } from 'react'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { ClientContext, SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -7,6 +7,7 @@ import type { Config } from '../index.js'
 import { EngineStartupOverlay } from './EngineStartupOverlay.js'
 import { Moe4AllOnboarding } from './Moe4AllOnboarding.js'
 import { Moe4AllSettings, type Moe4AllSettingsInjected } from './Moe4AllSettings.js'
+import { PluginUpdateNotice } from './PluginUpdateNotice.js'
 import { RuntimeStatusDock } from './RuntimeStatus.js'
 import { en, zh } from './locales.js'
 import { styles } from './styles.js'
@@ -59,12 +60,17 @@ export function apply(ctx: ClientContext): void {
 
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',
-    id: 'moe4all-engine-startup',
+    id: 'moe4all-overlays',
     label: () => 'MoE4All',
-  }, () => createElement(EngineStartupOverlay, {
-    scope,
-    t: ctx.locale.bind('settings.moe4all'),
-  })))
+  }, () => createElement(Fragment, null,
+    createElement(EngineStartupOverlay, {
+      scope,
+      t: ctx.locale.bind('settings.moe4all'),
+    }),
+    createElement(PluginUpdateNotice, {
+      t: ctx.locale.bind('settings.moe4all'),
+    }),
+  )))
 
   ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
     name: 'conversation.composer.dock',

@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - name: Build release assets
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = & node -p "require('./package.json').version"
+          if ($env:GITHUB_REF_NAME -ne "v$version") {
+            throw "tag $env:GITHUB_REF_NAME does not match package version $version"
+          }
+          New-Item -ItemType Directory -Path dist | Out-Null
+          $packedName = & npm pack --pack-destination dist
+          if ($LASTEXITCODE -ne 0) { throw 'npm pack failed' }
+          $packed = Join-Path 'dist' ($packedName | Select-Object -Last 1)
+          $tarball = Join-Path 'dist' 'dsh-llm-moe4all.tgz'
+          Move-Item -LiteralPath $packed -Destination $tarball
+
+          $bundle = Join-Path 'dist' 'windows-installer'
+          New-Item -ItemType Directory -Path $bundle | Out-Null
+          Copy-Item -LiteralPath 'installer\Install-MoE4All-Plugin.cmd' -Destination $bundle
+          Copy-Item -LiteralPath 'installer\install-plugin.ps1' -Destination $bundle
+          Copy-Item -LiteralPath 'installer\README-INSTALL.txt' -Destination $bundle
+          Copy-Item -LiteralPath $tarball -Destination $bundle
+          Compress-Archive -Path (Join-Path $bundle '*') -DestinationPath 'dist\dsh-llm-moe4all-windows.zip'
+
+          $assets = @('dist\dsh-llm-moe4all.tgz', 'dist\dsh-llm-moe4all-windows.zip')
+          $lines = foreach ($asset in $assets) {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash.ToLowerInvariant()
+            "$hash  $([IO.Path]::GetFileName($asset))"
+          }
+          [IO.File]::WriteAllLines((Join-Path $PWD 'dist\SHA256SUMS.txt'), $lines, (New-Object Text.UTF8Encoding($false)))
+      - name: Publish GitHub release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = & node -p "require('./package.json').version"
+          $arguments = @(
+            'release', 'create', $env:GITHUB_REF_NAME,
+            'dist\dsh-llm-moe4all.tgz',
+            'dist\dsh-llm-moe4all-windows.zip',
+            'dist\SHA256SUMS.txt',
+            '--title', "dsh-llm-moe4all $version",
+            '--generate-notes'
+          )
+          if ($version.Contains('-')) { $arguments += '--prerelease' }
+          & gh @arguments
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub release creation failed' }

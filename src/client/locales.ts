@@ -47,10 +47,25 @@ export type Moe4AllLocaleKey = WorkspaceKey
   | 'removeSelection' | 'modelLibrary' | 'modelLibraryHint' | 'scanning' | 'rescan'
   | 'noModelsInLibrary' | 'recommended' | 'notDownloaded' | 'files' | 'selected'
   | 'useModel' | 'modelDirectoryRequired'
+  | 'pluginUpdateTitle' | 'pluginUpdateAvailable' | 'pluginUpdating' | 'pluginUpdateComplete'
+  | 'pluginUpdateFailed' | 'pluginUpdateNow' | 'pluginUpdateRetry' | 'pluginRestartRequired' | 'pluginRefreshRequired'
+  | 'restartDsh' | 'refreshDsh' | 'dismiss'
 
 export const en: Record<Moe4AllLocaleKey, string> = {
   ...workspaceEn,
   nav: 'MoE4All',
+  pluginUpdateTitle: 'MoE4All plugin update',
+  pluginUpdateAvailable: 'A newer plugin build is available. Conversations and the Engine will not be changed.',
+  pluginUpdating: 'Updating plugin...',
+  pluginUpdateComplete: 'Plugin updated',
+  pluginUpdateFailed: 'Plugin update failed.',
+  pluginUpdateNow: 'Update plugin',
+  pluginUpdateRetry: 'Retry update',
+  pluginRestartRequired: 'Restart DSH to load the new plugin version.',
+  pluginRefreshRequired: 'Refresh DSH to load the new plugin version.',
+  restartDsh: 'Restart DSH',
+  refreshDsh: 'Refresh',
+  dismiss: 'Dismiss',
   engineVersion: 'Engine version',
   engineNotInstalled: 'No managed engine selected',
   deleteEngine: 'Delete version',
@@ -224,6 +239,18 @@ export const en: Record<Moe4AllLocaleKey, string> = {
 export const zh: Record<Moe4AllLocaleKey, string> = {
   ...workspaceZh,
   nav: 'MoE4All',
+  pluginUpdateTitle: 'MoE4All 插件更新',
+  pluginUpdateAvailable: '发现新的插件版本。本次更新不会修改对话和 MoE4All 引擎。',
+  pluginUpdating: '正在更新插件...',
+  pluginUpdateComplete: '插件已更新',
+  pluginUpdateFailed: '插件更新失败。',
+  pluginUpdateNow: '更新插件',
+  pluginUpdateRetry: '重试更新',
+  pluginRestartRequired: '重启 DSH 后即可载入新版本。',
+  pluginRefreshRequired: '刷新 DSH 后即可载入新版本。',
+  restartDsh: '重启 DSH',
+  refreshDsh: '刷新',
+  dismiss: '关闭',
   engineVersion: '引擎版本',
   engineNotInstalled: '未选择托管引擎',
   deleteEngine: '删除版本',
