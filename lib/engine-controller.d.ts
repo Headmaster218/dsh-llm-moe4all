@@ -1,4 +1,8 @@
-export type LaunchMode = 'connect' | 'auto' | 'managed';
+import { type EngineRuntimeMetrics } from './runtime-metrics.js';
+export { endpointFromConfig, validateEndpoint } from './connection.js';
+export type LaunchMode = 'connect' | 'prompt' | 'auto' | 'managed';
+export type EffectiveLaunchMode = Exclude<LaunchMode, 'managed'>;
+export type EnginePhase = 'checking' | 'ready' | 'offline' | 'starting' | 'resource-warning' | 'missing-executable' | 'missing-arguments' | 'duplicate-process' | 'error';
 export interface EngineConfig {
     mode?: LaunchMode;
     protocol?: 'http' | 'https';
@@ -36,9 +40,12 @@ export interface RunningProcess {
 export interface ResourceSnapshot {
     ramTotalBytes: number;
     ramAvailableBytes: number;
+    commitTotalBytes?: number;
+    commitAvailableBytes?: number;
     vramTotalBytes: number;
     vramAvailableBytes: number;
     vramLive: boolean;
+    compatibilityFallback?: boolean;
     device?: string;
     deviceName?: string;
 }
@@ -46,13 +53,33 @@ export interface StartupPrompt {
     reasons: string[];
     resources?: ResourceSnapshot;
 }
+export interface EngineRuntimeStatus {
+    owned?: boolean;
+    phase: EnginePhase;
+    endpoint: string;
+    mode: EffectiveLaunchMode;
+    ready: boolean;
+    canStart: boolean;
+    executable?: string;
+    message?: string;
+    reasons?: string[];
+    resources?: ResourceSnapshot;
+    processes?: RunningProcess[];
+    startupStartedAt?: string;
+    startupLines?: string[];
+    metrics?: EngineRuntimeMetrics;
+}
+export interface EngineStartResult {
+    ok: boolean;
+    status: EngineRuntimeStatus;
+}
 export interface EngineControllerDependencies {
     detectProcesses(processNames: string[]): Promise<RunningProcess[]>;
     probeResources(executable: string, config: EngineConfig): Promise<ResourceSnapshot>;
-    confirmBusyStart(prompt: StartupPrompt): Promise<boolean>;
+    resolveApiKey(): Promise<string | undefined>;
 }
 export declare const DEFAULT_CONFIG: {
-    readonly mode: "connect";
+    readonly mode: "prompt";
     readonly protocol: "http";
     readonly host: "127.0.0.1";
     readonly port: 8080;
@@ -75,17 +102,16 @@ export declare const DEFAULT_CONFIG: {
     readonly stopOnUnload: true;
     readonly logOutput: true;
 };
+export declare function runtimeLogFilter(value: string | undefined): string | undefined;
 type ResolvedEngineConfig = {
     [Key in keyof Required<EngineConfig>]: Required<EngineConfig>[Key];
 };
-export declare function endpointFromConfig(config: EngineConfig): string;
-export declare function validateEndpoint(endpoint: string, allowRemoteEndpoint?: boolean): URL;
+export declare function effectiveLaunchMode(mode: LaunchMode | undefined): EffectiveLaunchMode;
 export declare function probeHealth(endpoint: URL, timeoutMs: number, apiKeyEnv?: string, parentSignal?: AbortSignal): Promise<boolean>;
 export declare function resolveEngineExecutable(config: EngineConfig): Promise<string | undefined>;
 export declare function parseTasklistCsv(output: string): RunningProcess[];
 export declare function detectRunningEngines(processNames: string[]): Promise<RunningProcess[]>;
 export declare function probeEngineResources(executable: string, config: EngineConfig): Promise<ResourceSnapshot>;
-export declare function confirmBusyStartWithElectron(prompt: StartupPrompt): Promise<boolean>;
 export declare class EngineController {
     private readonly logger;
     readonly config: ResolvedEngineConfig;
@@ -94,17 +120,29 @@ export declare class EngineController {
     private readonly dependencies;
     private child;
     private readers;
-    private startPromise?;
+    private initialPromise?;
+    private startPromise;
     private stopping;
+    private currentStatus;
+    private startupStartedAt;
+    private startupLines;
+    private readonly runtimeMetrics;
     constructor(config: EngineConfig, logger?: EngineLogger, dependencies?: Partial<EngineControllerDependencies>);
-    ensureReady(): Promise<boolean>;
-    private blocked;
+    statusSnapshot(): EngineRuntimeStatus;
+    get ownsProcess(): boolean;
+    get isStarting(): boolean;
+    refreshStatus(): Promise<EngineRuntimeStatus>;
+    ensureReady(allowAutomatic?: boolean): Promise<boolean>;
+    requestStart(force?: boolean): Promise<EngineStartResult>;
+    private initialize;
+    private setStatus;
+    private startupDetails;
+    private appendStartupLine;
     private processNames;
     private findExistingEngine;
-    private resourcesAllowStart;
+    private resourceAssessment;
     private start;
     private launch;
-    dispose(): Promise<void>;
+    dispose(forceStop?: boolean): Promise<void>;
 }
-export {};
 //# sourceMappingURL=engine-controller.d.ts.map

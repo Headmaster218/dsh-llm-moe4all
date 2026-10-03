@@ -12,7 +12,9 @@ export default defineConfig({
   dts: false,
   sourcemap: true,
   clean: false,
+  inputOptions: { resolve: { mainFields: ['module', 'main'] } },
   deps: {
+    alwaysBundle: ['lucide-react'],
     neverBundle: specifier => specifier === 'react' || specifier === 'react/jsx-runtime',
   },
   outputOptions: {

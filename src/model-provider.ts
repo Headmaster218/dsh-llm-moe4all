@@ -1,4 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises'
+import { settingsNamespace, type SettingsPathOp } from '@deepseek-ai/dsh-settings'
 
 import type { EngineLogger } from './engine-controller.js'
 
@@ -17,18 +18,22 @@ export interface DiscoveredModel {
   name: string
 }
 
-interface FiberLike {
-  update(config: unknown, noSave?: boolean): void | Promise<void>
-  await?(): Promise<unknown>
+export interface ProviderSettingsLike {
+  get(namespace: ReturnType<typeof settingsNamespace>): unknown
+  mutate(
+    namespace: ReturnType<typeof settingsNamespace>,
+    operations: readonly SettingsPathOp[],
+  ): Promise<void>
 }
 
-interface LoaderEntryLike {
-  options: { config?: unknown }
-  fiber?: FiberLike
-}
-
-export interface LoaderLike {
-  resolve(id: string): LoaderEntryLike
+interface ProviderModelProfile {
+  id: string
+  name: string
+  contextWindow: number
+  maxTokens: number
+  input: ('text' | 'image')[]
+  reasoningEfforts: false | Record<string, string>
+  compat: { supportsDeveloperRole: false }
 }
 
 interface ProviderProfile {
@@ -39,23 +44,14 @@ interface ProviderProfile {
   defaultContextWindow: number
   defaultMaxTokens: number
   defaultInput: ('text' | 'image')[]
-  models: Array<{
-    id: string
-    name: string
-    contextWindow: number
-    maxTokens: number
-    input: ('text' | 'image')[]
-    reasoningEfforts: false
-  }>
+  compat: { supportsDeveloperRole: false }
+  models: ProviderModelProfile[]
 }
 
-interface PiAiConfig {
-  providers?: Record<string, unknown>
-  [key: string]: unknown
-}
-
+const PI_AI_NAMESPACE = settingsNamespace('llm-pi-ai')
+const DEFAULT_MODEL_NAMESPACE = settingsNamespace('agent-default-model')
 const DEFAULTS = {
-  contextWindow: 262_144,
+  contextWindow: 163_840,
   maxTokens: 102_400,
   vision: true,
   excludeModelNameContains: ['embed', 'embedding'],
@@ -67,22 +63,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function authorizationHeader(apiKeyEnv: string): Record<string, string> {
-  if (!apiKeyEnv) return {}
-  const value = process.env[apiKeyEnv]
+function authorizationHeader(apiKeyEnv: string, apiKey?: string): Record<string, string> {
+  if (!apiKeyEnv && !apiKey) return {}
+  const value = apiKey ?? process.env[apiKeyEnv]
   return value ? { authorization: `Bearer ${value}` } : {}
+}
+
+function isQwen38(id: string): boolean {
+  return /qwen3(?:[.-]?8)/iu.test(id)
 }
 
 export async function discoverModels(
   endpoint: URL,
   config: ModelProviderConfig = {},
   parentSignal?: AbortSignal,
+  apiKey?: string,
 ): Promise<DiscoveredModel[]> {
   const timeout = AbortSignal.timeout(config.modelDiscoveryTimeoutMs ?? DEFAULTS.modelDiscoveryTimeoutMs)
   const signal = parentSignal === undefined ? timeout : AbortSignal.any([parentSignal, timeout])
   const url = new URL('models', endpoint.href.endsWith('/') ? endpoint.href : `${endpoint.href}/`)
   const response = await fetch(url, {
-    headers: authorizationHeader(config.apiKeyEnv ?? ''),
+    headers: authorizationHeader(config.apiKeyEnv ?? '', apiKey),
     signal,
   })
   if (!response.ok) throw new Error(`model discovery returned HTTP ${response.status}`)
@@ -124,65 +125,66 @@ export function providerProfile(
     defaultContextWindow: contextWindow,
     defaultMaxTokens: maxTokens,
     defaultInput: input,
+    compat: { supportsDeveloperRole: false },
     models: models.map((model) => ({
       ...model,
       contextWindow,
       maxTokens,
       input,
-      reasoningEfforts: false,
+      reasoningEfforts: isQwen38(model.id)
+        ? { low: 'low', medium: 'medium', xhigh: 'xhigh' }
+        : false,
+      compat: { supportsDeveloperRole: false },
     })),
   }
 }
 
-function configWithProvider(base: unknown, profile: ProviderProfile): PiAiConfig {
-  const config: PiAiConfig = isRecord(base) ? { ...base } : {}
-  const providers = isRecord(config.providers) ? { ...config.providers } : {}
-  providers.moe4all = profile
-  config.providers = providers
-  return config
-}
-
-async function waitForAdapter(loader: LoaderLike, signal: AbortSignal): Promise<LoaderEntryLike> {
-  while (!signal.aborted) {
-    try {
-      const entry = loader.resolve('llm-pi-ai')
-      if (entry.fiber !== undefined) {
-        await entry.fiber.await?.()
-        return entry
-      }
-    } catch {
-      // The bundle entries are mounted concurrently; the adapter may not exist yet.
+function mergeProviderProfile(existing: unknown, generated: ProviderProfile): Record<string, unknown> {
+  const previous = isRecord(existing) ? existing : {}
+  const previousModels = Array.isArray(previous.models)
+    ? new Map(previous.models.filter(isRecord).map((model) => [String(model.id ?? ''), model]))
+    : new Map<string, Record<string, unknown>>()
+  const models = generated.models.map((model) => {
+    const old = previousModels.get(model.id) ?? {}
+    const oldCompat = isRecord(old.compat) ? old.compat : {}
+    const oldEfforts = isRecord(old.reasoningEfforts) ? old.reasoningEfforts : undefined
+    return {
+      ...old,
+      ...model,
+      ...(oldEfforts === undefined ? {} : { reasoningEfforts: oldEfforts }),
+      compat: { ...oldCompat, ...model.compat },
     }
-    await delay(100, undefined, { signal })
+  })
+  return {
+    ...previous,
+    ...generated,
+    compat: {
+      ...(isRecord(previous.compat) ? previous.compat : {}),
+      ...generated.compat,
+    },
+    models,
   }
-  throw signal.reason
 }
 
 export class ModelProviderBridge {
   private readonly abort = new AbortController()
-  private entry?: LoaderEntryLike
-  private originalConfig: unknown
   private signature = ''
   private lastError = ''
   private syncInFlight: Promise<void> | undefined
-  private didUpdate = false
+  private discovered: DiscoveredModel[] = []
 
   constructor(
-    private readonly loader: LoaderLike,
+    private readonly settings: ProviderSettingsLike,
     private readonly endpoint: URL,
     private readonly config: ModelProviderConfig,
     private readonly logger: EngineLogger,
+    private readonly resolveApiKey: () => Promise<string | undefined> = async () => undefined,
   ) {}
 
   async run(): Promise<void> {
     try {
-      this.entry = await waitForAdapter(this.loader, this.abort.signal)
-      this.originalConfig = this.entry.options.config
       while (!this.abort.signal.aborted) {
-        const sync = this.syncOnce()
-        this.syncInFlight = sync
-        await sync
-        if (this.syncInFlight === sync) this.syncInFlight = undefined
+        await this.refreshNow()
         if (this.abort.signal.aborted) break
         await delay(
           this.config.modelRefreshIntervalMs ?? DEFAULTS.modelRefreshIntervalMs,
@@ -195,20 +197,45 @@ export class ModelProviderBridge {
     }
   }
 
+  get models(): DiscoveredModel[] {
+    return this.discovered.map((model) => ({ ...model }))
+  }
+
+  async refreshNow(): Promise<void> {
+    if (this.abort.signal.aborted) return
+    if (this.syncInFlight !== undefined) return this.syncInFlight
+    const sync = this.syncOnce().finally(() => {
+      if (this.syncInFlight === sync) this.syncInFlight = undefined
+    })
+    this.syncInFlight = sync
+    await sync
+  }
+
   private async syncOnce(): Promise<void> {
     try {
-      const models = await discoverModels(this.endpoint, this.config, this.abort.signal)
-      const profile = providerProfile(this.endpoint, models, this.config)
+      const current = this.settings.get(PI_AI_NAMESPACE)
+      if (!isRecord(current)) throw new Error('llm-pi-ai settings are not active yet')
+      const models = await discoverModels(
+        this.endpoint,
+        this.config,
+        this.abort.signal,
+        await this.resolveApiKey(),
+      )
+      const providers = isRecord(current.providers) ? current.providers : {}
+      const profile = mergeProviderProfile(providers.moe4all, providerProfile(this.endpoint, models, this.config))
       const signature = JSON.stringify(profile)
-      if (signature === this.signature) return
-      const fiber = this.entry?.fiber
-      if (fiber === undefined) throw new Error('llm-pi-ai adapter is not active')
-      await fiber.update(configWithProvider(this.entry?.options.config, profile), true)
-      this.didUpdate = true
-      await fiber.await?.()
-      this.signature = signature
+      const changed = signature !== this.signature
+      if (changed) {
+        await this.settings.mutate(PI_AI_NAMESPACE, [
+          { op: 'set', path: ['providers', 'moe4all'], value: profile },
+        ])
+        this.signature = signature
+      }
+      this.discovered = models
       this.lastError = ''
-      this.logger.info(`MoE4All discovered ${models.length} chat model(s): ${models.map((model) => model.id).join(', ')}`)
+      if (changed) {
+        this.logger.info(`MoE4All discovered ${models.length} chat model(s): ${models.map((model) => model.id).join(', ')}`)
+      }
     } catch (error) {
       if (this.abort.signal.aborted) return
       const detail = error instanceof Error ? error.message : String(error)
@@ -219,12 +246,30 @@ export class ModelProviderBridge {
     }
   }
 
+  async activateDefaultModel(): Promise<void> {
+    await this.refreshNow()
+    const model = this.discovered[0]
+    if (model === undefined) throw new Error('MoE4All has no discovered chat model to activate')
+    const current = this.settings.get(DEFAULT_MODEL_NAMESPACE)
+    if (!isRecord(current)) throw new Error('agent-default-model settings are not active yet')
+    const operations: SettingsPathOp[] = [
+      { op: 'set', path: ['provider'], value: 'moe4all' },
+      { op: 'set', path: ['model'], value: model.id },
+    ]
+    if (isQwen38(model.id)) {
+      const effort = typeof current.reasoningEffort === 'string'
+        && ['low', 'medium', 'xhigh'].includes(current.reasoningEffort)
+        ? current.reasoningEffort
+        : 'medium'
+      operations.push({ op: 'set', path: ['reasoningEffort'], value: effort })
+    } else {
+      operations.push({ op: 'unset', path: ['reasoningEffort'] })
+    }
+    await this.settings.mutate(DEFAULT_MODEL_NAMESPACE, operations)
+  }
+
   async dispose(): Promise<void> {
     this.abort.abort()
     await this.syncInFlight
-    const fiber = this.entry?.fiber
-    if (fiber === undefined || !this.didUpdate) return
-    await fiber.update(this.originalConfig, true)
-    await fiber.await?.()
   }
 }

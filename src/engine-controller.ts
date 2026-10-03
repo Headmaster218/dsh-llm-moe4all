@@ -1,14 +1,28 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { constants as fsConstants } from 'node:fs'
 import { access } from 'node:fs/promises'
-import { createRequire } from 'node:module'
-import { freemem, totalmem } from 'node:os'
+import { freemem, totalmem, networkInterfaces } from 'node:os'
 import { basename, delimiter, dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import { createInterface, type Interface as ReadLineInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
+import { endpointFromConfig, isLoopback, validateEndpoint } from './connection.js'
+import { configuredSlots, RuntimeMetricsTracker, type EngineRuntimeMetrics } from './runtime-metrics.js'
+export { endpointFromConfig, validateEndpoint } from './connection.js'
 
-export type LaunchMode = 'connect' | 'auto' | 'managed'
+export type LaunchMode = 'connect' | 'prompt' | 'auto' | 'managed'
+export type EffectiveLaunchMode = Exclude<LaunchMode, 'managed'>
+
+export type EnginePhase =
+  | 'checking'
+  | 'ready'
+  | 'offline'
+  | 'starting'
+  | 'resource-warning'
+  | 'missing-executable'
+  | 'missing-arguments'
+  | 'duplicate-process'
+  | 'error'
 
 export interface EngineConfig {
   mode?: LaunchMode
@@ -50,9 +64,12 @@ export interface RunningProcess {
 export interface ResourceSnapshot {
   ramTotalBytes: number
   ramAvailableBytes: number
+  commitTotalBytes?: number
+  commitAvailableBytes?: number
   vramTotalBytes: number
   vramAvailableBytes: number
   vramLive: boolean
+  compatibilityFallback?: boolean
   device?: string
   deviceName?: string
 }
@@ -62,14 +79,36 @@ export interface StartupPrompt {
   resources?: ResourceSnapshot
 }
 
+export interface EngineRuntimeStatus {
+  owned?: boolean
+  phase: EnginePhase
+  endpoint: string
+  mode: EffectiveLaunchMode
+  ready: boolean
+  canStart: boolean
+  executable?: string
+  message?: string
+  reasons?: string[]
+  resources?: ResourceSnapshot
+  processes?: RunningProcess[]
+  startupStartedAt?: string
+  startupLines?: string[]
+  metrics?: EngineRuntimeMetrics
+}
+
+export interface EngineStartResult {
+  ok: boolean
+  status: EngineRuntimeStatus
+}
+
 export interface EngineControllerDependencies {
   detectProcesses(processNames: string[]): Promise<RunningProcess[]>
   probeResources(executable: string, config: EngineConfig): Promise<ResourceSnapshot>
-  confirmBusyStart(prompt: StartupPrompt): Promise<boolean>
+  resolveApiKey(): Promise<string | undefined>
 }
 
 export const DEFAULT_CONFIG = {
-  mode: 'connect',
+  mode: 'prompt',
   protocol: 'http',
   host: '127.0.0.1',
   port: 8080,
@@ -93,6 +132,15 @@ export const DEFAULT_CONFIG = {
   logOutput: true,
 } as const satisfies Required<EngineConfig>
 
+export function runtimeLogFilter(value: string | undefined): string | undefined {
+  const current = value?.trim()
+  if (!current) return undefined
+  if (current.split(',').some(directive => /^infr_server=(?:info|debug|trace)$/iu.test(directive.trim()))) {
+    return current
+  }
+  return `${current},infr_server=info`
+}
+
 type ResolvedEngineConfig = {
   [Key in keyof Required<EngineConfig>]: Required<EngineConfig>[Key]
 }
@@ -104,7 +152,6 @@ interface CapturedProcess {
 }
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const require = createRequire(import.meta.url)
 
 function resolvedConfig(config: EngineConfig): ResolvedEngineConfig {
   return {
@@ -115,55 +162,41 @@ function resolvedConfig(config: EngineConfig): ResolvedEngineConfig {
   }
 }
 
-function isLoopback(hostname: string): boolean {
-  const host = hostname.toLowerCase()
-  return host === 'localhost' || host === '::1' || host === '[::1]' || /^127(?:\.|$)/.test(host)
+export function effectiveLaunchMode(mode: LaunchMode | undefined): EffectiveLaunchMode {
+  return mode === 'managed' ? 'prompt' : mode ?? DEFAULT_CONFIG.mode
 }
 
-function urlHost(host: string): string {
-  const trimmed = host.trim()
-  return trimmed.includes(':') && !trimmed.startsWith('[') ? `[${trimmed}]` : trimmed
-}
-
-export function endpointFromConfig(config: EngineConfig): string {
-  const explicit = config.endpoint?.trim()
-  if (explicit) return explicit
-  const protocol = config.protocol ?? DEFAULT_CONFIG.protocol
-  const host = config.host ?? DEFAULT_CONFIG.host
-  const port = config.port ?? DEFAULT_CONFIG.port
-  const rawPath = config.apiBasePath ?? DEFAULT_CONFIG.apiBasePath
-  const path = rawPath.startsWith('/') ? rawPath : `/${rawPath}`
-  return `${protocol}://${urlHost(host)}:${port}${path}`
-}
-
-export function validateEndpoint(endpoint: string, allowRemoteEndpoint = false): URL {
-  const parsed = new URL(endpoint)
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error(`MoE4All endpoint must use http or https: ${endpoint}`)
-  }
-  if (parsed.username || parsed.password) {
-    throw new Error('MoE4All endpoint must not contain credentials')
-  }
-  if (!allowRemoteEndpoint && !isLoopback(parsed.hostname)) {
-    throw new Error(`MoE4All endpoint is not loopback: ${parsed.hostname}`)
-  }
-  return parsed
+function isLocalAddress(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, '')
+  return isLoopback(host) || Object.values(networkInterfaces()).some(interfaces => interfaces?.some(item => item.address === host))
 }
 
 function healthUrl(endpoint: URL): URL {
   return new URL('/health', endpoint.origin)
 }
 
-function authorizationHeader(apiKeyEnv: string): Record<string, string> {
-  if (!apiKeyEnv) return {}
-  const value = process.env[apiKeyEnv]
-  return value ? { authorization: `Bearer ${value}` } : {}
+function authorizationHeaderValue(apiKey?: string): Record<string, string> {
+  return apiKey ? { authorization: `Bearer ${apiKey}` } : {}
 }
 
 export async function probeHealth(
   endpoint: URL,
   timeoutMs: number,
   apiKeyEnv = '',
+  parentSignal?: AbortSignal,
+): Promise<boolean> {
+  return probeHealthWithApiKey(
+    endpoint,
+    timeoutMs,
+    apiKeyEnv ? process.env[apiKeyEnv] : undefined,
+    parentSignal,
+  )
+}
+
+async function probeHealthWithApiKey(
+  endpoint: URL,
+  timeoutMs: number,
+  apiKey?: string,
   parentSignal?: AbortSignal,
 ): Promise<boolean> {
   const timeoutSignal = AbortSignal.timeout(timeoutMs)
@@ -174,7 +207,7 @@ export async function probeHealth(
   try {
     const response = await fetch(healthUrl(endpoint), {
       method: 'GET',
-      headers: authorizationHeader(apiKeyEnv),
+      headers: authorizationHeaderValue(apiKey),
       signal,
     })
     return response.ok
@@ -323,6 +356,100 @@ function finiteBytes(value: unknown, field: string): number {
   return value
 }
 
+function unsupportedResourcesCommand(result: CapturedProcess): boolean {
+  return /(?:unrecognized|unknown) subcommand ['"]?resources/iu.test(`${result.stderr}\n${result.stdout}`)
+}
+
+function configuredDevice(arguments_: string[]): string | undefined {
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const argument = arguments_[index]!
+    const inline = /^--dev=(.+)$/u.exec(argument)?.[1]
+    if (inline !== undefined) return inline
+    if (argument === '--dev') return arguments_[index + 1]
+    if (argument === '--set') {
+      const value = arguments_[index + 1]
+      if (value?.startsWith('device.dev=')) return value.slice('device.dev='.length)
+      index += 1
+    }
+  }
+  return undefined
+}
+
+interface LegacyWindowsSnapshot {
+  ram_total_bytes: number
+  ram_available_bytes: number
+  commit_total_bytes: number
+  commit_available_bytes: number
+  vram_used_bytes?: number
+}
+
+async function probeWindowsSnapshot(timeout: number): Promise<LegacyWindowsSnapshot> {
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    '$os = Get-CimInstance Win32_OperatingSystem',
+    '$gpuUsage = $null',
+    "try { $gpuUsage = [Math]::Ceiling(((Get-Counter '\\GPU Adapter Memory(*)\\Dedicated Usage' -MaxSamples 1).CounterSamples | Measure-Object CookedValue -Sum).Sum) } catch {}",
+    '[pscustomobject]@{ ram_total_bytes = [uint64]$os.TotalVisibleMemorySize * 1024; ram_available_bytes = [uint64]$os.FreePhysicalMemory * 1024; commit_total_bytes = [uint64]$os.TotalVirtualMemorySize * 1024; commit_available_bytes = [uint64]$os.FreeVirtualMemory * 1024; vram_used_bytes = $gpuUsage } | ConvertTo-Json -Compress',
+  ].join('; ')
+  const windows = await captureProcess(
+    'powershell.exe',
+    ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
+    timeout,
+  )
+  if (windows.exitCode !== 0) {
+    throw new Error(`Windows resource probe failed (${windows.exitCode}): ${windows.stderr.trim()}`)
+  }
+  return JSON.parse(windows.stdout.trim()) as LegacyWindowsSnapshot
+}
+
+function parseLegacyDevice(output: string, requested?: string): { device: string, deviceName: string, totalBytes: number } {
+  const devices = output.split(/\r?\n/u).flatMap((line) => {
+    const match = /^\s*(Vulkan\d+):\s+(.+?)\s+\[.*?([\d.]+)\s+GiB device-local\](.*)$/u.exec(line)
+    if (match === null) return []
+    return [{
+      device: match[1]!,
+      deviceName: match[2]!.trim(),
+      totalBytes: Math.round(Number(match[3]) * 1024 ** 3),
+      selected: match[4]!.includes('<- default'),
+    }]
+  })
+  const selected = requested === undefined
+    ? devices.find(item => item.selected) ?? devices[0]
+    : devices.find(item => item.device.toLowerCase() === requested.toLowerCase())
+  if (selected === undefined || selected.totalBytes <= 0) {
+    throw new Error(`The legacy engine did not report the selected Vulkan device${requested === undefined ? '' : ` ${requested}`}.`)
+  }
+  return selected
+}
+
+async function probeLegacyWindowsResources(
+  executable: string,
+  config: EngineConfig,
+): Promise<ResourceSnapshot> {
+  const timeout = config.resourceProbeTimeoutMs ?? DEFAULT_CONFIG.resourceProbeTimeoutMs
+  const deviceResult = await captureProcess(executable, ['devices'], timeout, config.workingDirectory)
+  if (deviceResult.exitCode !== 0) {
+    throw new Error(`infr devices probe failed (${deviceResult.exitCode}): ${deviceResult.stderr.trim()}`)
+  }
+  const selected = parseLegacyDevice(deviceResult.stdout, configuredDevice(config.arguments ?? []))
+  const raw = await probeWindowsSnapshot(timeout)
+  const used = typeof raw.vram_used_bytes === 'number' && Number.isFinite(raw.vram_used_bytes)
+    ? Math.max(0, raw.vram_used_bytes)
+    : undefined
+  return {
+    ramTotalBytes: finiteBytes(raw.ram_total_bytes, 'ram_total_bytes'),
+    ramAvailableBytes: finiteBytes(raw.ram_available_bytes, 'ram_available_bytes'),
+    commitTotalBytes: finiteBytes(raw.commit_total_bytes, 'commit_total_bytes'),
+    commitAvailableBytes: finiteBytes(raw.commit_available_bytes, 'commit_available_bytes'),
+    vramTotalBytes: selected.totalBytes,
+    vramAvailableBytes: used === undefined ? selected.totalBytes : Math.max(0, selected.totalBytes - used),
+    vramLive: used !== undefined,
+    compatibilityFallback: true,
+    device: selected.device,
+    deviceName: selected.deviceName,
+  }
+}
+
 export async function probeEngineResources(
   executable: string,
   config: EngineConfig,
@@ -334,14 +461,27 @@ export async function probeEngineResources(
     config.workingDirectory,
   )
   if (result.exitCode !== 0) {
+    if (process.platform === 'win32' && unsupportedResourcesCommand(result)) {
+      return probeLegacyWindowsResources(executable, config)
+    }
     throw new Error(`infr resource probe failed (${result.exitCode}): ${result.stderr.trim()}`)
   }
   const raw = JSON.parse(result.stdout.trim()) as Record<string, unknown>
   const device = typeof raw.device === 'string' ? raw.device : undefined
   const deviceName = typeof raw.device_name === 'string' ? raw.device_name : undefined
+  let windows: LegacyWindowsSnapshot | undefined
+  if (process.platform === 'win32') {
+    try {
+      windows = await probeWindowsSnapshot(config.resourceProbeTimeoutMs ?? DEFAULT_CONFIG.resourceProbeTimeoutMs)
+    } catch {}
+  }
   return {
-    ramTotalBytes: typeof raw.ram_total_bytes === 'number' ? raw.ram_total_bytes : totalmem(),
-    ramAvailableBytes: typeof raw.ram_available_bytes === 'number' ? raw.ram_available_bytes : freemem(),
+    ramTotalBytes: typeof raw.ram_total_bytes === 'number' ? raw.ram_total_bytes : windows?.ram_total_bytes ?? totalmem(),
+    ramAvailableBytes: typeof raw.ram_available_bytes === 'number' ? raw.ram_available_bytes : windows?.ram_available_bytes ?? freemem(),
+    ...(windows === undefined ? {} : {
+      commitTotalBytes: windows.commit_total_bytes,
+      commitAvailableBytes: windows.commit_available_bytes,
+    }),
     vramTotalBytes: finiteBytes(raw.vram_total_bytes, 'vram_total_bytes'),
     vramAvailableBytes: finiteBytes(raw.vram_available_bytes, 'vram_available_bytes'),
     vramLive: raw.vram_live === true,
@@ -354,75 +494,14 @@ function percent(available: number, total: number): string {
   return `${(available / total * 100).toFixed(1)}%`
 }
 
-export async function confirmBusyStartWithElectron(prompt: StartupPrompt): Promise<boolean> {
-  let electron: unknown
-  try {
-    electron = require('electron')
-  } catch {
-    return confirmBusyStartWithWindowsDialog(prompt)
-  }
-  const dialog = (electron as { dialog?: { showMessageBox(options: unknown): Promise<{ response: number }> } }).dialog
-  if (dialog === undefined) return confirmBusyStartWithWindowsDialog(prompt)
-  const resources = prompt.resources
-  const detail = [
-    ...prompt.reasons,
-    resources === undefined
-      ? 'Resource usage could not be measured.'
-      : `RAM free ${percent(resources.ramAvailableBytes, resources.ramTotalBytes)}, VRAM free ${percent(resources.vramAvailableBytes, resources.vramTotalBytes)}.`,
-    '',
-    'Starting another inference engine under load can exhaust memory or reset the GPU.',
-    '当前资源不足时启动另一个推理引擎，可能耗尽内存或导致显卡重置。',
-  ].join('\n')
-  const result = await dialog.showMessageBox({
-    type: 'warning',
-    title: 'Start MoE4All? / 是否启动 MoE4All？',
-    message: 'MoE4All automatic startup was paused because the machine is busy.',
-    detail,
-    buttons: ['Cancel / 取消', 'Start anyway / 仍然启动'],
-    defaultId: 0,
-    cancelId: 0,
-    noLink: true,
-  })
-  return result.response === 1
-}
-
-async function confirmBusyStartWithWindowsDialog(prompt: StartupPrompt): Promise<boolean> {
-  if (process.platform !== 'win32') return false
-  const resources = prompt.resources
-  const detail = [
-    'MoE4All automatic startup was paused because the machine is busy.',
-    ...prompt.reasons,
-    resources === undefined
-      ? 'Resource usage could not be measured.'
-      : `RAM free ${percent(resources.ramAvailableBytes, resources.ramTotalBytes)}, VRAM free ${percent(resources.vramAvailableBytes, resources.vramTotalBytes)}.`,
-    '',
-    'Start anyway? This may exhaust memory or reset the GPU.',
-  ].join('\n')
-  const script = [
-    'Add-Type -AssemblyName PresentationFramework;',
-    '$result = [System.Windows.MessageBox]::Show($env:MOE4ALL_START_PROMPT,',
-    "'MoE4All',",
-    '[System.Windows.MessageBoxButton]::YesNo,',
-    '[System.Windows.MessageBoxImage]::Warning,',
-    '[System.Windows.MessageBoxResult]::No);',
-    'if ($result -eq [System.Windows.MessageBoxResult]::Yes) { exit 0 } else { exit 1 }',
-  ].join(' ')
-  return new Promise((resolvePrompt) => {
-    const child = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], {
-      env: { ...process.env, MOE4ALL_START_PROMPT: detail },
-      shell: false,
-      windowsHide: true,
-      stdio: 'ignore',
-    })
-    child.once('error', () => resolvePrompt(false))
-    child.once('close', (code) => resolvePrompt(code === 0))
-  })
+function cleanOutputLine(line: string): string {
+  return line.replaceAll(/\u001B\[[0-?]*[ -/]*[@-~]/gu, '').replaceAll('\r', '').trimEnd()
 }
 
 const DEFAULT_DEPENDENCIES: EngineControllerDependencies = {
   detectProcesses: detectRunningEngines,
   probeResources: probeEngineResources,
-  confirmBusyStart: confirmBusyStartWithElectron,
+  resolveApiKey: async () => undefined,
 }
 
 function pipeLines(stream: NodeJS.ReadableStream | null, write: (line: string) => void): ReadLineInterface | undefined {
@@ -458,8 +537,13 @@ export class EngineController {
   private readonly dependencies: EngineControllerDependencies
   private child: ChildProcess | undefined
   private readers: ReadLineInterface[] = []
-  private startPromise?: Promise<boolean>
+  private initialPromise?: Promise<boolean>
+  private startPromise: Promise<EngineStartResult> | undefined
   private stopping = false
+  private currentStatus: EngineRuntimeStatus
+  private startupStartedAt: string | undefined
+  private startupLines: string[] = []
+  private readonly runtimeMetrics: RuntimeMetricsTracker
 
   constructor(
     config: EngineConfig,
@@ -467,136 +551,335 @@ export class EngineController {
     dependencies: Partial<EngineControllerDependencies> = {},
   ) {
     this.config = resolvedConfig(config)
+    this.runtimeMetrics = new RuntimeMetricsTracker(configuredSlots(this.config.arguments))
     this.endpoint = validateEndpoint(endpointFromConfig(this.config), this.config.allowRemoteEndpoint)
-    this.dependencies = { ...DEFAULT_DEPENDENCIES, ...dependencies }
+    this.dependencies = {
+      ...DEFAULT_DEPENDENCIES,
+      resolveApiKey: async () => {
+        const ref = this.config.apiKeyEnv
+        return ref ? process.env[ref] : undefined
+      },
+      ...dependencies,
+    }
+    this.currentStatus = {
+      phase: 'checking',
+      endpoint: this.endpoint.href.replace(/\/$/u, ''),
+      mode: effectiveLaunchMode(this.config.mode),
+      ready: false,
+      canStart: false,
+    }
   }
 
-  ensureReady(): Promise<boolean> {
-    this.startPromise ??= this.start().catch((error: unknown) => {
-      if (this.abort.signal.aborted) return false
-      throw error
+  statusSnapshot(): EngineRuntimeStatus {
+    return structuredClone({ ...this.currentStatus, ...this.startupDetails(), owned: this.ownsProcess })
+  }
+
+  get ownsProcess(): boolean {
+    return this.child !== undefined && this.child.exitCode === null && this.child.signalCode === null
+  }
+
+  get isStarting(): boolean { return this.startPromise !== undefined }
+
+  async refreshStatus(): Promise<EngineRuntimeStatus> {
+    if (await probeHealthWithApiKey(
+      this.endpoint,
+      this.config.healthTimeoutMs,
+      await this.dependencies.resolveApiKey(),
+      this.abort.signal,
+    )) {
+      return this.setStatus({
+        phase: 'ready',
+        ready: true,
+        canStart: false,
+        message: `Connected to MoE4All at ${this.endpoint.origin}`,
+      })
+    }
+
+    if (this.currentStatus.phase === 'starting' || this.currentStatus.phase === 'resource-warning' || this.currentStatus.phase === 'error') {
+      return this.statusSnapshot()
+    }
+    if (effectiveLaunchMode(this.config.mode) === 'connect') {
+      return this.setStatus({ phase: 'offline', ready: false, canStart: false, message: 'The configured service is not reachable.' })
+    }
+    if (!isLocalAddress(this.endpoint.hostname)) {
+      return this.setStatus({
+        phase: 'offline',
+        ready: false,
+        canStart: false,
+        message: 'The configured remote MoE4All endpoint is not reachable.',
+      })
+    }
+    const executable = await resolveEngineExecutable(this.config)
+    if (executable === undefined) {
+      return this.setStatus({
+        phase: 'missing-executable',
+        ready: false,
+        canStart: false,
+        message: 'MoE4All is not installed or its executable path is not configured.',
+      })
+    }
+    if (this.config.arguments.length === 0) {
+      return this.setStatus({
+        phase: 'missing-arguments',
+        ready: false,
+        canStart: false,
+        executable,
+        message: 'Configure serve arguments and a model path before starting MoE4All.',
+      })
+    }
+    return this.setStatus({
+      phase: 'offline',
+      ready: false,
+      canStart: true,
+      executable,
+      message: 'MoE4All is configured and ready to start.',
     })
-    return this.startPromise
   }
 
-  private blocked(message: string): false {
-    if (this.config.mode === 'managed') throw new Error(message)
-    this.logger.warn(message)
-    return false
+  ensureReady(allowAutomatic = true): Promise<boolean> {
+    this.initialPromise ??= this.initialize(allowAutomatic)
+    return this.initialPromise
+  }
+
+  requestStart(force = false): Promise<EngineStartResult> {
+    if (this.startPromise !== undefined) return this.startPromise
+    const run = this.start(force).catch((error: unknown) => {
+      if (this.abort.signal.aborted) return { ok: false, status: this.statusSnapshot() }
+      const message = error instanceof Error ? error.message : String(error)
+      this.logger.error(error instanceof Error ? error : new Error(message))
+      return {
+        ok: false,
+        status: this.setStatus({
+          phase: 'error',
+          ready: false,
+          canStart: true,
+          ...this.startupDetails(),
+          message,
+        }),
+      }
+    }).finally(() => {
+      if (this.startPromise === run) this.startPromise = undefined
+    })
+    this.startPromise = run
+    return run
+  }
+
+  private async initialize(allowAutomatic: boolean): Promise<boolean> {
+    const status = await this.refreshStatus()
+    if (status.ready) {
+      this.logger.info(`MoE4All engine connected at ${this.endpoint.origin}`)
+      return true
+    }
+    if (!allowAutomatic || effectiveLaunchMode(this.config.mode) !== 'auto') {
+      this.logger.info(`MoE4All engine is waiting at ${this.endpoint.origin}; launch mode is ${effectiveLaunchMode(this.config.mode)}`)
+      return false
+    }
+    return (await this.requestStart(false)).ok
+  }
+
+  private setStatus(next: Omit<EngineRuntimeStatus, 'endpoint' | 'mode'>): EngineRuntimeStatus {
+    this.currentStatus = {
+      endpoint: this.endpoint.href.replace(/\/$/u, ''),
+      mode: effectiveLaunchMode(this.config.mode),
+      ...next,
+    }
+    return this.statusSnapshot()
+  }
+
+  private startupDetails(): Pick<EngineRuntimeStatus, 'startupStartedAt' | 'startupLines' | 'metrics'> {
+    return {
+      ...(this.startupStartedAt === undefined ? {} : { startupStartedAt: this.startupStartedAt }),
+      ...(this.startupLines.length === 0 ? {} : { startupLines: [...this.startupLines] }),
+      metrics: this.runtimeMetrics.snapshot(),
+    }
+  }
+
+  private appendStartupLine(line: string): void {
+    const cleaned = cleanOutputLine(line)
+    if (cleaned === '') return
+    this.runtimeMetrics.ingest(cleaned)
+    this.startupLines.push(cleaned)
+    if (this.startupLines.length > 120) this.startupLines.splice(0, this.startupLines.length - 120)
+    if (this.currentStatus.phase === 'starting') {
+      this.currentStatus = { ...this.currentStatus, ...this.startupDetails() }
+    }
   }
 
   private processNames(executable: string): string[] {
     return [...new Set([...this.config.processNames, basename(executable)])]
   }
 
-  private async findExistingEngine(executable: string): Promise<RunningProcess[] | undefined> {
-    try {
-      return await this.dependencies.detectProcesses(this.processNames(executable))
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error)
-      this.blocked(`MoE4All engine was not started because process detection failed: ${detail}`)
-      return undefined
-    }
+  private async findExistingEngine(executable: string): Promise<RunningProcess[]> {
+    return this.dependencies.detectProcesses(this.processNames(executable))
   }
 
-  private async resourcesAllowStart(executable: string): Promise<boolean> {
+  private async resourceAssessment(executable: string): Promise<StartupPrompt> {
     let resources: ResourceSnapshot | undefined
     const reasons: string[] = []
     try {
       resources = await this.dependencies.probeResources(executable, this.config)
       if (resources.ramAvailableBytes / resources.ramTotalBytes <= this.config.minimumFreeRamFraction) {
-        reasons.push(`RAM free is ${percent(resources.ramAvailableBytes, resources.ramTotalBytes)}; more than ${this.config.minimumFreeRamFraction * 100}% is required for unattended startup.`)
+        reasons.push(`RAM free is ${percent(resources.ramAvailableBytes, resources.ramTotalBytes)}; more than ${this.config.minimumFreeRamFraction * 100}% is required.`)
       }
       if (!resources.vramLive) {
         reasons.push('The Vulkan driver did not provide a live VRAM availability measurement.')
       } else if (resources.vramAvailableBytes / resources.vramTotalBytes <= this.config.minimumFreeVramFraction) {
-        reasons.push(`VRAM free is ${percent(resources.vramAvailableBytes, resources.vramTotalBytes)}; more than ${this.config.minimumFreeVramFraction * 100}% is required for unattended startup.`)
+        reasons.push(`VRAM free is ${percent(resources.vramAvailableBytes, resources.vramTotalBytes)}; more than ${this.config.minimumFreeVramFraction * 100}% is required.`)
       }
     } catch (error) {
       reasons.push(`Resource usage could not be measured: ${error instanceof Error ? error.message : String(error)}`)
     }
-    if (reasons.length === 0) return true
-
-    this.logger.warn(`MoE4All automatic startup paused: ${reasons.join(' ')}`)
-    if (!this.config.promptWhenBusy) return false
-    const approved = await this.dependencies.confirmBusyStart({
-      reasons,
-      ...(resources === undefined ? {} : { resources }),
-    })
-    if (!approved) this.logger.warn('MoE4All startup was not approved; leaving the existing machine state unchanged')
-    return approved
+    return { reasons, ...(resources === undefined ? {} : { resources }) }
   }
 
-  private async start(): Promise<boolean> {
-    if (await probeHealth(
-      this.endpoint,
-      this.config.healthTimeoutMs,
-      this.config.apiKeyEnv,
-      this.abort.signal,
-    )) {
-      this.logger.info(`MoE4All engine connected at ${this.endpoint.origin}`)
-      return true
-    }
-
-    if (this.config.mode === 'connect') {
-      this.logger.warn(`MoE4All engine is not reachable at ${this.endpoint.origin}`)
-      return false
-    }
-    if (!isLoopback(this.endpoint.hostname)) {
-      return this.blocked('MoE4All will not start a local engine for a remote endpoint')
+  private async start(force: boolean): Promise<EngineStartResult> {
+    const status = await this.refreshStatus()
+    if (status.ready) return { ok: true, status }
+    if (effectiveLaunchMode(this.config.mode) === 'connect') return { ok: false, status }
+    if (!isLocalAddress(this.endpoint.hostname)) {
+      return {
+        ok: false,
+        status: this.setStatus({
+          phase: 'error',
+          ready: false,
+          canStart: false,
+          message: 'MoE4All will not start a local engine for a remote endpoint.',
+        }),
+      }
     }
 
     const executable = await resolveEngineExecutable(this.config)
-    if (executable === undefined || this.config.arguments.length === 0) {
-      const detail = executable === undefined
-        ? 'set executable or MOE4ALL_ENGINE'
-        : 'set arguments with serve options and a model path'
-      return this.blocked(`MoE4All engine was not started: ${detail}`)
+    if (executable === undefined) {
+      return {
+        ok: false,
+        status: this.setStatus({
+          phase: 'missing-executable',
+          ready: false,
+          canStart: false,
+          message: 'MoE4All is not installed or its executable path is not configured.',
+        }),
+      }
+    }
+    if (this.config.arguments.length === 0) {
+      return {
+        ok: false,
+        status: this.setStatus({
+          phase: 'missing-arguments',
+          ready: false,
+          canStart: false,
+          executable,
+          message: 'Configure serve arguments and a model path before starting MoE4All.',
+        }),
+      }
     }
 
     const existing = await this.findExistingEngine(executable)
-    if (existing === undefined) return false
     if (existing.length > 0) {
       const detail = existing.map((item) => `${item.name} (PID ${item.pid})`).join(', ')
-      return this.blocked(`MoE4All engine was not started because an engine process already exists: ${detail}. Configure its actual IP and port instead.`)
+      return {
+        ok: false,
+        status: this.setStatus({
+          phase: 'duplicate-process',
+          ready: false,
+          canStart: false,
+          executable,
+          processes: existing,
+          message: `Another MoE4All engine process already exists: ${detail}. Configure its actual IP and port instead.`,
+        }),
+      }
     }
-    if (!await this.resourcesAllowStart(executable)) return false
+
+    const assessment = await this.resourceAssessment(executable)
+    if (assessment.reasons.length > 0 && !force) {
+      this.logger.warn(`MoE4All startup requires confirmation: ${assessment.reasons.join(' ')}`)
+      return {
+        ok: false,
+        status: this.setStatus({
+          phase: 'resource-warning',
+          ready: false,
+          canStart: true,
+          executable,
+          reasons: assessment.reasons,
+          ...(assessment.resources === undefined ? {} : { resources: assessment.resources }),
+          message: 'MoE4All needs confirmation before starting with the current resource headroom.',
+        }),
+      }
+    }
 
     const raced = await this.findExistingEngine(executable)
-    if (raced === undefined) return false
     if (raced.length > 0) {
       const detail = raced.map((item) => `${item.name} (PID ${item.pid})`).join(', ')
-      return this.blocked(`MoE4All engine startup was cancelled because another engine appeared: ${detail}`)
+      return {
+        ok: false,
+        status: this.setStatus({
+          phase: 'duplicate-process',
+          ready: false,
+          canStart: false,
+          executable,
+          processes: raced,
+          message: `Another MoE4All engine appeared during startup: ${detail}.`,
+        }),
+      }
     }
 
-    const child = this.launch(executable)
+    this.startupStartedAt = new Date().toISOString()
+    this.startupLines = []
+    this.runtimeMetrics.reset()
+    this.setStatus({
+      phase: 'starting',
+      ready: false,
+      canStart: false,
+      executable,
+      ...(assessment.resources === undefined ? {} : { resources: assessment.resources }),
+      ...this.startupDetails(),
+      message: 'MoE4All is starting.',
+    })
+    const apiKey = await this.dependencies.resolveApiKey()
+    const child = this.launch(executable, this.config.arguments, apiKey)
     const deadline = Date.now() + this.config.startupTimeoutMs
     while (Date.now() < deadline) {
-      if (this.abort.signal.aborted) return false
+      if (this.abort.signal.aborted) return { ok: false, status: this.statusSnapshot() }
       if (child.exitCode !== null || child.signalCode !== null) {
-        throw new Error(`MoE4All engine exited before becoming ready (code ${String(child.exitCode)})`)
+        throw new Error(`MoE4All engine exited before becoming ready (code ${String(child.exitCode)}).`)
       }
-      if (await probeHealth(
+      if (await probeHealthWithApiKey(
         this.endpoint,
         this.config.healthTimeoutMs,
-        this.config.apiKeyEnv,
+        apiKey,
         this.abort.signal,
       )) {
         this.logger.info(`MoE4All engine ready at ${this.endpoint.origin}`)
-        return true
+        const ready = this.setStatus({
+          phase: 'ready',
+          ready: true,
+          canStart: false,
+          executable,
+          ...this.startupDetails(),
+          message: `MoE4All is ready at ${this.endpoint.origin}.`,
+        })
+        return { ok: true, status: ready }
       }
       await delay(this.config.pollIntervalMs, undefined, { signal: this.abort.signal })
     }
     throw new Error(`MoE4All engine did not become healthy within ${this.config.startupTimeoutMs} ms`)
   }
 
-  private launch(executable: string): ChildProcess {
+  private launch(executable: string, arguments_: string[], apiKey?: string): ChildProcess {
     const persistent = !this.config.stopOnUnload
-    const captureOutput = this.config.logOutput && !persistent
+    const captureOutput = !persistent
+    const environment: NodeJS.ProcessEnv = {
+      ...process.env,
+      ...(apiKey ? { INFR_API_KEY: apiKey } : {}),
+    }
+    if (captureOutput) {
+      const rustLog = runtimeLogFilter(environment.RUST_LOG)
+      if (rustLog !== undefined) environment.RUST_LOG = rustLog
+      environment.INFR_SERVE_STATS_SECS ??= '1'
+    }
     this.logger.info(`Starting MoE4All engine: ${executable}`)
-    this.child = spawn(executable, this.config.arguments, {
+    this.child = spawn(executable, arguments_, {
       cwd: this.config.workingDirectory || undefined,
-      env: process.env,
+      env: environment,
       shell: false,
       windowsHide: true,
       detached: persistent,
@@ -609,19 +892,33 @@ export class EngineController {
     this.child.on('exit', (code, signal) => {
       if (!this.stopping) {
         this.logger.warn(`MoE4All engine exited (code=${String(code)}, signal=${String(signal)})`)
+        this.setStatus({
+          phase: 'offline',
+          ready: false,
+          canStart: true,
+          executable,
+          ...this.startupDetails(),
+          message: `MoE4All exited (code=${String(code)}, signal=${String(signal)}).`,
+        })
       }
     })
     if (captureOutput) {
       this.readers = [
-        pipeLines(this.child.stdout, (line) => this.logger.info(`[MoE4All] ${line}`)),
-        pipeLines(this.child.stderr, (line) => this.logger.warn(`[MoE4All] ${line}`)),
+        pipeLines(this.child.stdout, (line) => {
+          this.appendStartupLine(line)
+          if (this.config.logOutput) this.logger.info(`[MoE4All] ${line}`)
+        }),
+        pipeLines(this.child.stderr, (line) => {
+          this.appendStartupLine(line)
+          if (this.config.logOutput) this.logger.warn(`[MoE4All] ${line}`)
+        }),
       ].filter((reader): reader is ReadLineInterface => reader !== undefined)
     }
     if (persistent) this.child.unref()
     return this.child
   }
 
-  async dispose(): Promise<void> {
+  async dispose(forceStop = false): Promise<void> {
     if (this.stopping) return
     this.stopping = true
     this.abort.abort()
@@ -630,7 +927,7 @@ export class EngineController {
 
     const child = this.child
     this.child = undefined
-    if (child === undefined || !this.config.stopOnUnload) return
+    if (child === undefined || (!forceStop && !this.config.stopOnUnload)) return
     if (child.exitCode !== null || child.signalCode !== null) return
 
     child.kill()
