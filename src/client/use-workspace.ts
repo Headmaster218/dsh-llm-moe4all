@@ -39,6 +39,8 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [resourcePrompt, setResourcePrompt] = useState(false)
+  const [portPrompt, setPortPrompt] = useState(false)
+  const [portCandidate, setPortCandidate] = useState('')
   const saving = useRef(false)
   const mounted = useRef(true)
   const live = useRef(editor)
@@ -71,6 +73,7 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
       'importError',
       'selectDestination',
       'invalidExtra',
+      'invalidPort',
     ]
     setError(keys.includes(text) ? props.t(text as Parameters<Translate>[0]) : text)
   }
@@ -189,6 +192,14 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
     return () => clearTimeout(timer)
   }, [directoryKey, editor === null])
 
+  useEffect(() => {
+    if (status?.phase === 'resource-warning') setResourcePrompt(true)
+    if (status?.phase === 'port-conflict') {
+      if (status.suggestedPort !== undefined) setPortCandidate(String(status.suggestedPort))
+      setPortPrompt(true)
+    }
+  }, [status?.phase, status?.suggestedPort])
+
   const edit = (update: (previous: Editor) => Editor) =>
     setEditor((previous) => (previous === null ? previous : update(previous)))
   const config = (patch: Partial<Config>) =>
@@ -225,14 +236,32 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
     run('save', async () => {
       await persist()
     })
+  function applyStartResult(result: Awaited<ReturnType<typeof api.startEngine>>) {
+    setStatus(result.status)
+    setResourcePrompt(result.status.phase === 'resource-warning')
+    setPortPrompt(result.status.phase === 'port-conflict')
+    if (result.status.phase === 'port-conflict' && result.status.suggestedPort !== undefined)
+      setPortCandidate(String(result.status.suggestedPort))
+    if (result.ok) setNotice(props.t('connectionOk'))
+  }
   const launch = (force = false, restart = false) =>
     run('start', async () => {
       await persist(live.current?.config.mode !== 'connect')
       if (restart) await api.stopEngine()
       const result = await api.startEngine(force)
-      setStatus(result.status)
-      setResourcePrompt(result.status.phase === 'resource-warning')
-      if (result.ok) setNotice(props.t('connectionOk'))
+      applyStartResult(result)
+    })
+  const launchAtPort = (port: number) =>
+    run('start', async () => {
+      if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('invalidPort')
+      const current = live.current
+      if (current === null) return
+      const next = { ...current, config: { ...current.config, endpoint: '', port } }
+      setEditor(next)
+      live.current = next
+      setPortPrompt(false)
+      await persist(true)
+      applyStartResult(await api.startEngine(false))
     })
   const stop = () =>
     run('stop', async () => {
@@ -428,6 +457,10 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
     setNotice,
     resourcePrompt,
     setResourcePrompt,
+    portPrompt,
+    setPortPrompt,
+    portCandidate,
+    setPortCandidate,
     disabled: !snapshot.writable || ['save', 'start', 'stop', 'delete'].includes(working),
     snapshot,
     scan: () =>
@@ -436,6 +469,7 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
       }),
     save,
     launch,
+    launchAtPort,
     stop,
     refresh,
     saveApiKey,

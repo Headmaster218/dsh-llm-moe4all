@@ -12,42 +12,20 @@ jobs:
   release:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: npm
+      - name: Use pinned npm
+        run: npm install --global npm@10.9.2
       - run: npm ci
       - run: npm run check
       - name: Build release assets
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = & node -p "require('./package.json').version"
-          if ($env:GITHUB_REF_NAME -ne "v$version") {
-            throw "tag $env:GITHUB_REF_NAME does not match package version $version"
-          }
-          New-Item -ItemType Directory -Path dist | Out-Null
-          $packedName = & npm pack --pack-destination dist
-          if ($LASTEXITCODE -ne 0) { throw 'npm pack failed' }
-          $packed = Join-Path 'dist' ($packedName | Select-Object -Last 1)
-          $tarball = Join-Path 'dist' 'dsh-llm-moe4all.tgz'
-          Move-Item -LiteralPath $packed -Destination $tarball
-
-          $bundle = Join-Path 'dist' 'windows-installer'
-          New-Item -ItemType Directory -Path $bundle | Out-Null
-          Copy-Item -LiteralPath 'installer\Install-MoE4All-Plugin.cmd' -Destination $bundle
-          Copy-Item -LiteralPath 'installer\install-plugin.ps1' -Destination $bundle
-          Copy-Item -LiteralPath 'installer\README-INSTALL.txt' -Destination $bundle
-          Copy-Item -LiteralPath $tarball -Destination $bundle
-          Compress-Archive -Path (Join-Path $bundle '*') -DestinationPath 'dist\dsh-llm-moe4all-windows.zip'
-
-          $assets = @('dist\dsh-llm-moe4all.tgz', 'dist\dsh-llm-moe4all-windows.zip')
-          $lines = foreach ($asset in $assets) {
-            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash.ToLowerInvariant()
-            "$hash  $([IO.Path]::GetFileName($asset))"
-          }
-          [IO.File]::WriteAllLines((Join-Path $PWD 'dist\SHA256SUMS.txt'), $lines, (New-Object Text.UTF8Encoding($false)))
+          & .\scripts\build-release.ps1 -OutputDirectory dist -ExpectedTag $env:GITHUB_REF_NAME
       - name: Publish GitHub release
         shell: powershell
         env:

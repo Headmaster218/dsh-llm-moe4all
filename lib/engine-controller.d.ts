@@ -2,7 +2,7 @@ import { type EngineRuntimeMetrics } from './runtime-metrics.js';
 export { endpointFromConfig, validateEndpoint } from './connection.js';
 export type LaunchMode = 'connect' | 'prompt' | 'auto' | 'managed';
 export type EffectiveLaunchMode = Exclude<LaunchMode, 'managed'>;
-export type EnginePhase = 'checking' | 'ready' | 'offline' | 'starting' | 'resource-warning' | 'missing-executable' | 'missing-arguments' | 'duplicate-process' | 'error';
+export type EnginePhase = 'checking' | 'ready' | 'offline' | 'starting' | 'resource-warning' | 'missing-executable' | 'missing-arguments' | 'port-conflict' | 'error';
 export interface EngineConfig {
     mode?: LaunchMode;
     protocol?: 'http' | 'https';
@@ -16,10 +16,8 @@ export interface EngineConfig {
     workingDirectory?: string;
     apiKeyEnv?: string;
     allowRemoteEndpoint?: boolean;
-    processNames?: string[];
     minimumFreeRamFraction?: number;
     minimumFreeVramFraction?: number;
-    promptWhenBusy?: boolean;
     resourceProbeTimeoutMs?: number;
     startupTimeoutMs?: number;
     healthTimeoutMs?: number;
@@ -32,10 +30,6 @@ export interface EngineLogger {
     info(message: string): void;
     warn(message: string): void;
     error(message: string | Error): void;
-}
-export interface RunningProcess {
-    name: string;
-    pid: number;
 }
 export interface ResourceSnapshot {
     ramTotalBytes: number;
@@ -64,7 +58,7 @@ export interface EngineRuntimeStatus {
     message?: string;
     reasons?: string[];
     resources?: ResourceSnapshot;
-    processes?: RunningProcess[];
+    suggestedPort?: number;
     startupStartedAt?: string;
     startupLines?: string[];
     metrics?: EngineRuntimeMetrics;
@@ -74,7 +68,6 @@ export interface EngineStartResult {
     status: EngineRuntimeStatus;
 }
 export interface EngineControllerDependencies {
-    detectProcesses(processNames: string[]): Promise<RunningProcess[]>;
     probeResources(executable: string, config: EngineConfig): Promise<ResourceSnapshot>;
     resolveApiKey(): Promise<string | undefined>;
 }
@@ -90,10 +83,8 @@ export declare const DEFAULT_CONFIG: {
     readonly workingDirectory: "";
     readonly apiKeyEnv: "";
     readonly allowRemoteEndpoint: false;
-    readonly processNames: ["infr.exe", "moe4all.exe", "infr", "moe4all"];
     readonly minimumFreeRamFraction: 0.5;
     readonly minimumFreeVramFraction: 0.5;
-    readonly promptWhenBusy: true;
     readonly resourceProbeTimeoutMs: 10000;
     readonly startupTimeoutMs: 120000;
     readonly healthTimeoutMs: 2000;
@@ -109,8 +100,6 @@ type ResolvedEngineConfig = {
 export declare function effectiveLaunchMode(mode: LaunchMode | undefined): EffectiveLaunchMode;
 export declare function probeHealth(endpoint: URL, timeoutMs: number, apiKeyEnv?: string, parentSignal?: AbortSignal): Promise<boolean>;
 export declare function resolveEngineExecutable(config: EngineConfig): Promise<string | undefined>;
-export declare function parseTasklistCsv(output: string): RunningProcess[];
-export declare function detectRunningEngines(processNames: string[]): Promise<RunningProcess[]>;
 export declare function probeEngineResources(executable: string, config: EngineConfig): Promise<ResourceSnapshot>;
 export declare class EngineController {
     private readonly logger;
@@ -131,6 +120,9 @@ export declare class EngineController {
     statusSnapshot(): EngineRuntimeStatus;
     get ownsProcess(): boolean;
     get isStarting(): boolean;
+    private get bindHost();
+    private get bindPort();
+    private portConflict;
     refreshStatus(): Promise<EngineRuntimeStatus>;
     ensureReady(allowAutomatic?: boolean): Promise<boolean>;
     requestStart(force?: boolean): Promise<EngineStartResult>;
@@ -138,8 +130,6 @@ export declare class EngineController {
     private setStatus;
     private startupDetails;
     private appendStartupLine;
-    private processNames;
-    private findExistingEngine;
     private resourceAssessment;
     private start;
     private launch;

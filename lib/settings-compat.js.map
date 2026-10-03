@@ -1,0 +1,1 @@
+{"version":3,"file":"settings-compat.js","sourceRoot":"","sources":["../src/settings-compat.ts"],"names":[],"mappings":"AAEA,MAAM,iBAAiB,GAAG,oBAAoB,CAAA;AAE9C,MAAM,UAAU,iBAAiB,CAAC,KAAa;IAC7C,IAAI,CAAC,iBAAiB,CAAC,IAAI,CAAC,KAAK,CAAC,EAAE,CAAC;QACnC,MAAM,IAAI,SAAS,CAAC,uBAAuB,KAAK,gBAAgB,MAAM,CAAC,iBAAiB,CAAC,EAAE,CAAC,CAAA;IAC9F,CAAC;IACD,OAAO,KAA0B,CAAA;AACnC,CAAC"}

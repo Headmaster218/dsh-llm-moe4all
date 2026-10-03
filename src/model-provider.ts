@@ -1,7 +1,8 @@
 import { setTimeout as delay } from 'node:timers/promises'
-import { settingsNamespace, type SettingsPathOp } from '@deepseek-ai/dsh-settings'
+import type { SettingsNamespace, SettingsPathOp } from '@deepseek-ai/dsh-settings'
 
 import type { EngineLogger } from './engine-controller.js'
+import { settingsNamespace } from './settings-compat.js'
 
 export interface ModelProviderConfig {
   apiKeyEnv?: string
@@ -19,9 +20,9 @@ export interface DiscoveredModel {
 }
 
 export interface ProviderSettingsLike {
-  get(namespace: ReturnType<typeof settingsNamespace>): unknown
+  get(namespace: SettingsNamespace): unknown
   mutate(
-    namespace: ReturnType<typeof settingsNamespace>,
+    namespace: SettingsNamespace,
     operations: readonly SettingsPathOp[],
   ): Promise<void>
 }
@@ -179,6 +180,7 @@ export class ModelProviderBridge {
     private readonly config: ModelProviderConfig,
     private readonly logger: EngineLogger,
     private readonly resolveApiKey: () => Promise<string | undefined> = async () => undefined,
+    private readonly enabled: () => boolean = () => true,
   ) {}
 
   async run(): Promise<void> {
@@ -212,6 +214,7 @@ export class ModelProviderBridge {
   }
 
   private async syncOnce(): Promise<void> {
+    if (!this.enabled()) return
     try {
       const current = this.settings.get(PI_AI_NAMESPACE)
       if (!isRecord(current)) throw new Error('llm-pi-ai settings are not active yet')

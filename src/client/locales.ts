@@ -15,7 +15,7 @@ export type Moe4AllLocaleKey = WorkspaceKey
   | 'startup' | 'executable' | 'workingDirectory' | 'arguments' | 'argumentsHint'
   | 'minimumFreeRam' | 'minimumFreeVram' | 'stopOnUnload' | 'logOutput'
   | 'model' | 'contextWindow' | 'maxTokens' | 'tokenUnitHint' | 'vision'
-  | 'advanced' | 'processNames' | 'excludeModels' | 'listHint'
+  | 'advanced' | 'excludeModels' | 'listHint'
   | 'resourceProbeTimeout' | 'startupTimeout' | 'healthTimeout' | 'pollInterval'
   | 'shutdownTimeout' | 'modelRefreshInterval' | 'modelDiscoveryTimeout'
   | 'checkingEngine' | 'syncedModels' | 'saveAndStart' | 'startNow' | 'checkUpdates'
@@ -150,7 +150,6 @@ export const en: Record<Moe4AllLocaleKey, string> = {
   tokenUnitHint: 'Plain tokens or k units; 1k = 1024 tokens.',
   vision: 'Advertise image input support',
   advanced: 'Advanced',
-  processNames: 'Engine process names',
   excludeModels: 'Exclude model names containing',
   listHint: 'One value per line.',
   resourceProbeTimeout: 'Resource probe timeout (ms)',
@@ -335,7 +334,6 @@ export const zh: Record<Moe4AllLocaleKey, string> = {
   tokenUnitHint: '可填写 Token 数或 k；1k = 1024 Token。',
   vision: '向 DSH 声明支持图片输入',
   advanced: '高级设置',
-  processNames: '引擎进程名',
   excludeModels: '排除名称中包含以下文本的模型',
   listHint: '每行一个值。',
   resourceProbeTimeout: '资源探测超时（毫秒）',

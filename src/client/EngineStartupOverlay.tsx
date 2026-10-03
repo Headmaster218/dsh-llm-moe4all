@@ -4,7 +4,7 @@ import { Play, RefreshCw } from 'lucide-react'
 import type { Config } from '../index.js'
 import type { EngineControlStatus } from '../host-routes.js'
 import { fetchEngineStatus, startEngine } from './engine-api.js'
-import { Button, Dialog, Toggle, type Translate } from './workspace-ui.js'
+import { Button, Dialog, Field, Toggle, type Translate } from './workspace-ui.js'
 
 export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config>; t: Translate }) {
   const snapshot = useSyncExternalStore(
@@ -20,6 +20,7 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
     document.documentElement.dataset.moe4allSettings === 'open',
   )
   const [error, setError] = useState('')
+  const [port, setPort] = useState('')
   useEffect(() => {
     let disposed = false
     let timer: ReturnType<typeof setTimeout>
@@ -48,10 +49,18 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
       window.removeEventListener('moe4all-settings-visibility', visibility)
     }
   }, [])
-  async function launch(force: boolean) {
+  useEffect(() => {
+    if (status?.phase === 'port-conflict' && status.suggestedPort !== undefined)
+      setPort(String(status.suggestedPort))
+  }, [status?.phase, status?.suggestedPort])
+  async function launch(force: boolean, selectedPort?: number) {
     setBusy(true)
     setError('')
     try {
+      if (selectedPort !== undefined) {
+        await scope.set('endpoint', '')
+        await scope.set('port', selectedPort)
+      }
       const result = await startEngine(force)
       setStatus(result.status)
       if (result.ok) {
@@ -68,11 +77,14 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
   if (!config || !status || settingsOpen || dismissed || status.ready || config.mode === 'connect')
     return null
   const phase = status.phase
-  if (!['offline', 'starting', 'error', 'duplicate-process', 'resource-warning'].includes(phase)) return null
+  if (!['offline', 'starting', 'error', 'port-conflict', 'resource-warning'].includes(phase)) return null
   if (phase === 'offline' && config.mode === 'auto') return null
   const starting = phase === 'starting' || busy
   const warning = phase === 'resource-warning'
-  const failed = phase === 'error' || phase === 'duplicate-process'
+  const conflict = phase === 'port-conflict'
+  const failed = phase === 'error'
+  const selectedPort = Number(port)
+  const validPort = Number.isInteger(selectedPort) && selectedPort >= 1 && selectedPort <= 65_535
   return (
     <Dialog
       title={t(
@@ -80,6 +92,8 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
           ? 'startupProgressTitle'
           : warning
             ? 'resourceWarningTitle'
+            : conflict
+              ? 'portConflictTitle'
             : failed
               ? 'startupFailedTitle'
               : 'startupPromptTitle',
@@ -93,18 +107,31 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
             <Button
               kind={warning ? 'danger' : 'primary'}
               icon={failed ? RefreshCw : Play}
-              onClick={() => void launch(warning)}
+              disabled={conflict && !validPort}
+              onClick={() => void launch(warning, conflict ? selectedPort : undefined)}
             >
-              {t(warning ? 'startAnyway' : failed ? 'retryStart' : 'startNow')}
+              {t(warning ? 'startAnyway' : conflict ? 'changePortAndStart' : failed ? 'retryStart' : 'startNow')}
             </Button>
           )}
         </>
       }
     >
-      <p>{t(warning ? 'resourceWarningBody' : starting ? 'startupProgressBody' : 'startupPromptBody')}</p>
+      <p>{t(warning ? 'resourceWarningBody' : conflict ? 'portConflictBody' : starting ? 'startupProgressBody' : 'startupPromptBody')}</p>
       <code>{status.endpoint}</code>
       {warning && status.reasons?.map((reason) => <p key={reason}>{reason}</p>)}
+      {conflict && (
+        <Field label={t('availablePort')}>
+          <input
+            type="number"
+            min={1}
+            max={65_535}
+            value={port}
+            onChange={(event) => setPort(event.target.value)}
+          />
+        </Field>
+      )}
       {failed && <p role="alert">{status.message}</p>}
+      {conflict && status.message && <p>{status.message}</p>}
       {starting && <progress aria-label={t('startingStatus')} />}
       {(starting || failed) && (
         <pre className="m4a-log m4a-log--preview">

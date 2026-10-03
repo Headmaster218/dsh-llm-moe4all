@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 
 import { ApiKeyManager, DEFAULT_API_KEY_REF } from './api-key.js'
@@ -10,6 +10,7 @@ import { EngineReleaseManager } from './engine-release.js'
 import { makeEngineRoutes } from './host-routes.js'
 import { ModelDownloadManager } from './model-download.js'
 import { ModelProviderBridge, type ModelProviderConfig, type ProviderSettingsLike } from './model-provider.js'
+import { settingsNamespace } from './settings-compat.js'
 
 export const name = 'moe4all-engine'
 export const inject = ['settings', 'credentials']
@@ -34,10 +35,8 @@ export const Config = z.object({
   workingDirectory: z.string().role('path').default(''),
   apiKeyEnv: z.string().default(DEFAULT_API_KEY_REF),
   allowRemoteEndpoint: z.boolean().default(false),
-  processNames: z.array(z.string()).default(['infr.exe', 'moe4all.exe', 'infr', 'moe4all']),
   minimumFreeRamFraction: z.number().min(0).max(1).default(0.5),
   minimumFreeVramFraction: z.number().min(0).max(1).default(0.5),
-  promptWhenBusy: z.boolean().default(true),
   resourceProbeTimeoutMs: z.number().step(1).min(100).default(10_000),
   startupTimeoutMs: z.number().step(1).min(1000).default(120_000),
   healthTimeoutMs: z.number().step(1).min(100).default(2_000),
@@ -64,6 +63,19 @@ interface ActiveRuntime {
   discovery: Promise<void>
 }
 
+interface PluginSettingsScope<T> {
+  get(): T
+  watch(callback: (next: T, previous: T) => void | Promise<void>): () => void
+}
+
+interface PluginSettingsLike extends ProviderSettingsLike {
+  register<T>(
+    namespace: SettingsNamespace,
+    schema: z<T>,
+    options?: { base?: Partial<T> },
+  ): PluginSettingsScope<T>
+}
+
 function normalizedConfig(config: Config): Config {
   return { ...config, apiKeyEnv: config.apiKeyEnv?.trim() || DEFAULT_API_KEY_REF }
 }
@@ -85,6 +97,7 @@ function startRuntime(
     resolved,
     ctx.logger,
     () => apiKeys.clientKey(resolved),
+    () => resolved.mode === 'connect' || controller.ownsProcess,
   )
   const startup = controller.ensureReady(allowAutomatic).catch((error: unknown) => {
     ctx.logger.error(error instanceof Error ? error : new Error(String(error)))
@@ -115,7 +128,7 @@ function configSignature(config: Config): string {
 }
 
 export function apply(ctx: Context, config: Config): () => Promise<void> {
-  const settings = (ctx as Context & { settings: ProviderSettingsLike }).settings
+  const settings = (ctx as Context & { settings: PluginSettingsLike }).settings
   const credentials = (ctx as Context & { credentials: CredentialProvider }).credentials
   const apiKeys = new ApiKeyManager(credentials)
   const releases = new EngineReleaseManager()
@@ -169,12 +182,10 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
     }, 250)
   }
 
-  installSettingsSection(ctx, SETTINGS_NAMESPACE, Config, config, {
-    setSource(current) {
-      source = current
-    },
-    onChange: scheduleRestart,
-  })
+  const settingsScope = settings.register(SETTINGS_NAMESPACE, Config, { base: config })
+  source = () => settingsScope.get()
+  const stopSettingsWatch = settingsScope.watch(scheduleRestart)
+  scheduleRestart()
 
   ctx.inject(['webServer'], (routeCtx: Context) => {
     const webServer = (routeCtx as Context & { webServer: WebServer }).webServer
@@ -203,6 +214,7 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
 
   return async () => {
     disposed = true
+    stopSettingsWatch()
     if (restartTimer !== undefined) clearTimeout(restartTimer)
     await transition
     const current = active
@@ -216,10 +228,8 @@ const plugin = { name, inject, Config, apply }
 export default plugin
 export {
   EngineController,
-  detectRunningEngines,
   effectiveLaunchMode,
   endpointFromConfig,
-  parseTasklistCsv,
   probeEngineResources,
   probeHealth,
   resolveEngineExecutable,
@@ -234,7 +244,6 @@ export type {
   EngineStartResult,
   LaunchMode,
   ResourceSnapshot,
-  RunningProcess,
 } from './engine-controller.js'
 export { EngineReleaseManager, releaseFromTag, selectRelease } from './engine-release.js'
 export type { EngineBootstrapResult, EngineInstallProgress, EngineInstallStage, EngineReleaseStatus, InstalledEngine, SelectedRelease } from './engine-release.js'

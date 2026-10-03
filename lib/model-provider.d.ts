@@ -1,4 +1,4 @@
-import { settingsNamespace, type SettingsPathOp } from '@deepseek-ai/dsh-settings';
+import type { SettingsNamespace, SettingsPathOp } from '@deepseek-ai/dsh-settings';
 import type { EngineLogger } from './engine-controller.js';
 export interface ModelProviderConfig {
     apiKeyEnv?: string;
@@ -14,8 +14,8 @@ export interface DiscoveredModel {
     name: string;
 }
 export interface ProviderSettingsLike {
-    get(namespace: ReturnType<typeof settingsNamespace>): unknown;
-    mutate(namespace: ReturnType<typeof settingsNamespace>, operations: readonly SettingsPathOp[]): Promise<void>;
+    get(namespace: SettingsNamespace): unknown;
+    mutate(namespace: SettingsNamespace, operations: readonly SettingsPathOp[]): Promise<void>;
 }
 interface ProviderModelProfile {
     id: string;
@@ -49,12 +49,13 @@ export declare class ModelProviderBridge {
     private readonly config;
     private readonly logger;
     private readonly resolveApiKey;
+    private readonly enabled;
     private readonly abort;
     private signature;
     private lastError;
     private syncInFlight;
     private discovered;
-    constructor(settings: ProviderSettingsLike, endpoint: URL, config: ModelProviderConfig, logger: EngineLogger, resolveApiKey?: () => Promise<string | undefined>);
+    constructor(settings: ProviderSettingsLike, endpoint: URL, config: ModelProviderConfig, logger: EngineLogger, resolveApiKey?: () => Promise<string | undefined>, enabled?: () => boolean);
     run(): Promise<void>;
     get models(): DiscoveredModel[];
     refreshNow(): Promise<void>;
