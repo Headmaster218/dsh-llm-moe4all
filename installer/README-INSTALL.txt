@@ -3,14 +3,20 @@ MoE4All plugin for DeepSeek Harness
 
 One-click install (recommended)
 -------------------------------
-1. Fully exit DSH Desktop after any active work finishes.
-2. Double-click Install-MoE4All-Plugin.cmd.
-3. Restart DSH and open Settings > MoE4All.
+1. Double-click Install-MoE4All-Plugin.cmd.
+2. Select the DSH home you want to modify.
+3. Finish active work, fully exit that DSH instance, then press Enter.
+4. Restart that DSH and open Settings > MoE4All.
 
 The installer uses the prebuilt dsh-llm-moe4all.tgz included in this folder.
 It keeps a versioned copy under the target DSH home before adding it to the
 web profile, so removing this extracted folder will not break later profile
 installs. No plugin source checkout or install-time build is needed.
+
+When more than one DSH is present, the installer shows each detected DSH home
+and launcher instead of choosing one automatically. A custom DSH_HOME can also
+be entered. A stale Git dependency from an older install is replaced with
+rollback backups before pnpm resolves the profile.
 
 PowerShell equivalent
 ---------------------
@@ -30,6 +36,6 @@ After every bundle install, update, or removal, restart the DSH profile.
 
 中文说明
 --------
-完成当前任务并彻底退出 DSH Desktop，双击 Install-MoE4All-Plugin.cmd。安装器会使用
-压缩包内的预编译插件，不再从 GitHub 拉取源码。安装完成后重新启动 DSH，再进入
-“设置 > MoE4All”。安装器只安装插件，不会替换 MoE4All 引擎。
+双击 Install-MoE4All-Plugin.cmd，明确选择要安装到的 DSH 数据目录，再按提示退出该
+DSH。安装器会使用压缩包内的预编译插件，并自动修复旧安装残留的失效 Git 依赖；
+失败时恢复 profile。安装完成后重新启动所选 DSH，再进入“设置 > MoE4All”。

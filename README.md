@@ -11,11 +11,13 @@ Chinese documentation: [README.zh.md](README.zh.md)
 ### Before the DSH catalog listing: one-click Windows install
 
 1. Open [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) and download `dsh-llm-moe4all-windows.zip` from the newest release.
-2. Extract the ZIP, finish any active DSH work, and fully exit DSH Desktop.
-3. Double-click `Install-MoE4All-Plugin.cmd`.
-4. Restart DSH and open **Settings > MoE4All**.
+2. Extract the ZIP and double-click `Install-MoE4All-Plugin.cmd`.
+3. Select the target DSH. When prompted, finish active work, fully exit that DSH instance, and press Enter.
+4. Restart the selected DSH and open **Settings > MoE4All**.
 
-The installer finds either the `dsh` command or a normal DSH Desktop installation, stores the bundled prebuilt plugin package under that DSH home, and adds it to the `web` profile. It does not clone GitHub source, run an install-time build, or require administrator rights.
+The installer lists the DSH homes it can identify and asks which one to modify. It recognizes normal DSH Desktop installs, running source-built DSH instances, and an explicitly entered `DSH_HOME`. It then stores the bundled prebuilt plugin package under the selected home and adds it to the `web` profile. It does not clone GitHub source, run an install-time build, or require administrator rights.
+
+If an earlier Git installation left an unreachable commit in the selected profile, the installer replaces only the `dsh-llm-moe4all` dependency before pnpm resolves the profile. The original `package.json` and `pnpm-lock.yaml` are restored automatically if installation fails.
 
 Restart the profile after installation. DSH loads Bundle membership only at profile startup.
 

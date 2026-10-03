@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0-alpha.19
+
+- Ask which DSH home to modify instead of silently choosing the first detected installation.
+- Detect running source-built DSH profiles and provide a manual DSH_HOME option.
+- Replace a stale MoE4All Git dependency transactionally before pnpm resolves the profile, restoring the manifest and lockfile if installation fails.
+
 ## 0.2.0-alpha.18
 
 - Make the Windows installer use its bundled prebuilt plugin package instead of a floating GitHub source.

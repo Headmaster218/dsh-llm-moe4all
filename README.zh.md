@@ -11,11 +11,13 @@ English documentation: [README.md](README.md)
 ### 收录 DSH 插件市场前：Windows 一键安装
 
 1. 打开 [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases)，从最上方的新版本中下载 `dsh-llm-moe4all-windows.zip`。
-2. 解压，完成当前 DSH 任务，并彻底退出 DSH Desktop。
-3. 双击 `Install-MoE4All-Plugin.cmd`。
-4. 重新启动 DSH，进入 **设置 > MoE4All**。
+2. 解压并双击 `Install-MoE4All-Plugin.cmd`。
+3. 选择目标 DSH；看到提示后再完成当前任务、彻底退出所选 DSH，然后按回车继续。
+4. 重新启动所选 DSH，进入 **设置 > MoE4All**。
 
-安装器会自动寻找 `dsh` 命令或常规安装的 DSH Desktop，把压缩包内已经预编译好的插件保存到该 DSH 的数据目录，再加入 `web` profile。它不会在安装时拉取 GitHub 源码或执行构建，也不需要管理员权限。
+安装器会列出能识别到的 DSH 数据目录，并要求用户明确选择。它支持常规 DSH Desktop、正在运行的源码版 DSH，也支持手动输入 `DSH_HOME`。随后，安装器会把压缩包内已经预编译好的插件保存到所选 DSH 的数据目录，再加入 `web` profile。它不会在安装时拉取 GitHub 源码或执行构建，也不需要管理员权限。
+
+如果旧版 Git 安装在所选 profile 中留下了已经无法访问的提交，安装器会在 pnpm 解析依赖前只替换 `dsh-llm-moe4all` 这一项。安装失败时，原始 `package.json` 和 `pnpm-lock.yaml` 会自动恢复。
 
 安装后需要重启对应 DSH profile。Bundle 是否生效是在 profile 启动时确定的。
 
