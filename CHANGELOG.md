@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0-alpha.18
+
+- Make the Windows installer use its bundled prebuilt plugin package instead of a floating GitHub source.
+- Keep the bundled package in the target DSH home so deleting the extracted installer does not break the profile dependency.
+- Replace prerelease-incompatible `releases/latest/download` README links with the Releases page.
+
 ## 0.2.0-alpha.15
 
 - Add automatic plugin update discovery, progress, retry, and restart/refresh prompts through the public DSH Market API.

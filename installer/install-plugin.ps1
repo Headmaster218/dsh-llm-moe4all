@@ -6,8 +6,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$onlineSource = 'github:Headmaster218/dsh-llm-moe4all'
 $desktopHome = Join-Path $env:APPDATA 'dsh-desktop\harness'
+$archive = Join-Path $PSScriptRoot 'dsh-llm-moe4all.tgz'
+$versionFile = Join-Path $PSScriptRoot 'PLUGIN-VERSION.txt'
+$manualSource = $archive
 
 function Get-DesktopRoots {
     $roots = New-Object System.Collections.Generic.List[string]
@@ -65,6 +67,18 @@ function Wait-ForDesktopExit {
     }
 }
 
+function Get-TargetDshHome {
+    param([pscustomobject]$Launcher)
+
+    if ($Launcher.Kind -eq 'desktop') {
+        return [IO.Path]::GetFullPath($desktopHome)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:DSH_HOME)) {
+        return [IO.Path]::GetFullPath($env:DSH_HOME)
+    }
+    return [IO.Path]::GetFullPath((Join-Path $HOME '.dsh'))
+}
+
 try {
     Write-Host 'MoE4All plugin installer for DeepSeek Harness' -ForegroundColor Cyan
     Write-Host 'Profile:' $Profile
@@ -75,17 +89,38 @@ try {
         throw 'DSH was not found. Install DSH Desktop or put the dsh command on PATH, then run this installer again.'
     }
 
-    $source = $onlineSource
-    if ($Offline) {
-        $archive = Join-Path $PSScriptRoot 'dsh-llm-moe4all.tgz'
-        if (-not (Test-Path -LiteralPath $archive)) {
-            throw 'The offline package dsh-llm-moe4all.tgz is missing beside this script.'
-        }
-        $source = $archive
-        Write-Host 'Installing the bundled offline package. Automatic online updates will require a later catalog or Git installation.' -ForegroundColor Yellow
+    if (-not (Test-Path -LiteralPath $archive)) {
+        throw 'The bundled package dsh-llm-moe4all.tgz is missing. Download and extract the complete Windows installer ZIP again.'
+    }
+    if (-not (Test-Path -LiteralPath $versionFile)) {
+        throw 'PLUGIN-VERSION.txt is missing. Download and extract the complete Windows installer ZIP again.'
+    }
+    $packageVersion = [IO.File]::ReadAllText($versionFile).Trim()
+    if ($packageVersion -notmatch '^[0-9A-Za-z][0-9A-Za-z.-]*$') {
+        throw 'PLUGIN-VERSION.txt does not contain a valid package version.'
     }
 
-    $nativeArgs = @('plugin', '--profile', $Profile, 'add', $source)
+    $targetHome = Get-TargetDshHome $launcher
+    $packageDirectory = Join-Path $targetHome 'plugin-packages'
+    $cachedArchive = Join-Path $packageDirectory ("dsh-llm-moe4all-$packageVersion.tgz")
+
+    Write-Host ('DSH home: ' + $targetHome)
+    Write-Host ('Plugin package: bundled ' + $packageVersion)
+    if (-not $DryRun) {
+        New-Item -ItemType Directory -Force -Path $packageDirectory | Out-Null
+        $sourcePath = [IO.Path]::GetFullPath($archive)
+        $destinationPath = [IO.Path]::GetFullPath($cachedArchive)
+        if (-not [string]::Equals($sourcePath, $destinationPath, [StringComparison]::OrdinalIgnoreCase)) {
+            Copy-Item -LiteralPath $archive -Destination $cachedArchive -Force
+        }
+        $manualSource = $cachedArchive
+    }
+
+    if ($Offline) {
+        Write-Host 'The release installer always uses its bundled prebuilt package; no plugin source download is needed.'
+    }
+
+    $nativeArgs = @('plugin', '--profile', $Profile, 'add', $cachedArchive)
     if ($DryRun) {
         Write-Host ('Launcher: ' + $launcher.Runner)
         if ($null -ne $launcher.Cli) { Write-Host ('CLI: ' + $launcher.Cli) }
@@ -122,7 +157,7 @@ try {
     Write-Host ''
     Write-Host ('Error: ' + $_.Exception.Message) -ForegroundColor Red
     Write-Host 'Manual command:'
-    Write-Host ('  dsh plugin --profile ' + $Profile + ' add ' + $onlineSource)
+    Write-Host ('  dsh plugin --profile ' + $Profile + ' add "' + $manualSource + '"')
     Write-Host 'Project releases: https://github.com/Headmaster218/dsh-llm-moe4all/releases'
     exit 1
 }

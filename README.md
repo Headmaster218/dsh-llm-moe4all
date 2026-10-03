@@ -10,24 +10,12 @@ Chinese documentation: [README.zh.md](README.zh.md)
 
 ### Before the DSH catalog listing: one-click Windows install
 
-1. Download [`dsh-llm-moe4all-windows.zip`](https://github.com/Headmaster218/dsh-llm-moe4all/releases/latest/download/dsh-llm-moe4all-windows.zip) from the latest Release.
+1. Open [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) and download `dsh-llm-moe4all-windows.zip` from the newest release.
 2. Extract the ZIP, finish any active DSH work, and fully exit DSH Desktop.
 3. Double-click `Install-MoE4All-Plugin.cmd`.
 4. Restart DSH and open **Settings > MoE4All**.
 
-The installer finds either the `dsh` command or a normal DSH Desktop installation and adds the updateable GitHub source to the `web` profile. It does not require administrator rights.
-
-On newer DSH builds, the same source can be entered in **Plugins > Install external plugin**:
-
-```text
-github:Headmaster218/dsh-llm-moe4all
-```
-
-The equivalent terminal command is:
-
-```powershell
-dsh plugin --profile web add github:Headmaster218/dsh-llm-moe4all
-```
+The installer finds either the `dsh` command or a normal DSH Desktop installation, stores the bundled prebuilt plugin package under that DSH home, and adds it to the `web` profile. It does not clone GitHub source, run an install-time build, or require administrator rights.
 
 Restart the profile after installation. DSH loads Bundle membership only at profile startup.
 
@@ -39,15 +27,15 @@ Open **Plugin Market**, search for `MoE4All`, choose `dsh-llm-moe4all`, and clic
 dsh plugin --profile web add dsh-llm-moe4all
 ```
 
-### Offline fallback
+### Release bundle details
 
-The Release ZIP also contains a prebuilt `dsh-llm-moe4all.tgz`:
+The Release ZIP contains a prebuilt `dsh-llm-moe4all.tgz`. The one-click installer uses it by default, avoiding Git source resolution and install-time compilation:
 
 ```powershell
-powershell.exe -NoLogo -NoProfile -File .\install-plugin.ps1 -Offline
+powershell.exe -NoLogo -NoProfile -File .\install-plugin.ps1
 ```
 
-A local tarball cannot follow online updates. Reinstall from GitHub or npm later to restore update tracking.
+Before the plugin is listed in DSH Market, install a newer plugin release by downloading and running its newer Windows installer. Once catalog updates are available, the in-app update prompt can replace this bootstrap path.
 
 ## Quick Start
 

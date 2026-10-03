@@ -10,24 +10,12 @@ English documentation: [README.md](README.md)
 
 ### 收录 DSH 插件市场前：Windows 一键安装
 
-1. 从最新 Release 下载 [`dsh-llm-moe4all-windows.zip`](https://github.com/Headmaster218/dsh-llm-moe4all/releases/latest/download/dsh-llm-moe4all-windows.zip)。
+1. 打开 [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases)，从最上方的新版本中下载 `dsh-llm-moe4all-windows.zip`。
 2. 解压，完成当前 DSH 任务，并彻底退出 DSH Desktop。
 3. 双击 `Install-MoE4All-Plugin.cmd`。
 4. 重新启动 DSH，进入 **设置 > MoE4All**。
 
-安装器会自动寻找 `dsh` 命令或常规安装的 DSH Desktop，并把可跟踪更新的 GitHub 源加入 `web` profile，不需要管理员权限。
-
-新版 DSH 也可以在 **Plugins/插件 > 安装外部插件** 中直接输入：
-
-```text
-github:Headmaster218/dsh-llm-moe4all
-```
-
-等价的终端命令是：
-
-```powershell
-dsh plugin --profile web add github:Headmaster218/dsh-llm-moe4all
-```
+安装器会自动寻找 `dsh` 命令或常规安装的 DSH Desktop，把压缩包内已经预编译好的插件保存到该 DSH 的数据目录，再加入 `web` profile。它不会在安装时拉取 GitHub 源码或执行构建，也不需要管理员权限。
 
 安装后需要重启对应 DSH profile。Bundle 是否生效是在 profile 启动时确定的。
 
@@ -39,15 +27,15 @@ dsh plugin --profile web add github:Headmaster218/dsh-llm-moe4all
 dsh plugin --profile web add dsh-llm-moe4all
 ```
 
-### 离线备用安装
+### Release 安装包说明
 
-Release ZIP 里同时带有预编译的 `dsh-llm-moe4all.tgz`：
+Release ZIP 内含预编译的 `dsh-llm-moe4all.tgz`，双击安装默认就使用它，不再解析 Git 源或现场编译插件：
 
 ```powershell
-powershell.exe -NoLogo -NoProfile -File .\install-plugin.ps1 -Offline
+powershell.exe -NoLogo -NoProfile -File .\install-plugin.ps1
 ```
 
-本地 tarball 无法自动跟踪线上版本。网络恢复后需要从 GitHub 或 npm 重装一次，才能恢复自动更新。
+插件进入 DSH 市场前，升级插件的方法是下载新版本的 Windows 安装包并重新运行；市场更新可用后，插件内的更新提示会接管这条引导安装路径。
 
 ## 最快开始使用
 

@@ -51,6 +51,7 @@ Copy-Item -LiteralPath (Join-Path $repositoryRoot 'installer\Install-MoE4All-Plu
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'installer\install-plugin.ps1') -Destination $bundle
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'installer\README-INSTALL.txt') -Destination $bundle
 Copy-Item -LiteralPath $tarball -Destination $bundle
+[IO.File]::WriteAllText((Join-Path $bundle 'PLUGIN-VERSION.txt'), "$version`n", (New-Object Text.UTF8Encoding($false)))
 Compress-Archive -Path (Join-Path $bundle '*') -DestinationPath $archive
 
 $lines = foreach ($asset in @($tarball, $archive)) {
