@@ -1,4 +1,4 @@
-import { settingsNamespace, type SettingsPathOp } from '@deepseek-ai/dsh-settings';
+import type { SettingsNamespace, SettingsPathOp } from '@deepseek-ai/dsh-settings';
 import type { EngineLogger } from './engine-controller.js';
 export interface ModelProviderConfig {
     apiKeyEnv?: string;
@@ -14,8 +14,8 @@ export interface DiscoveredModel {
     name: string;
 }
 export interface ProviderSettingsLike {
-    get(namespace: ReturnType<typeof settingsNamespace>): unknown;
-    mutate(namespace: ReturnType<typeof settingsNamespace>, operations: readonly SettingsPathOp[]): Promise<void>;
+    get(namespace: SettingsNamespace): unknown;
+    mutate(namespace: SettingsNamespace, operations: readonly SettingsPathOp[]): Promise<void>;
 }
 interface ProviderModelProfile {
     id: string;

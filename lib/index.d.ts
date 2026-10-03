@@ -1,10 +1,11 @@
 import type { Context } from '@deepseek-ai/cordis';
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings';
 import z from '@deepseek-ai/schemastery';
 import { type EngineConfig } from './engine-controller.js';
 import { type ModelProviderConfig } from './model-provider.js';
 export declare const name = "moe4all-engine";
 export declare const inject: string[];
-export declare const SETTINGS_NAMESPACE: import("@deepseek-ai/dsh-settings").SettingsNamespace;
+export declare const SETTINGS_NAMESPACE: SettingsNamespace;
 export interface Config extends EngineConfig, ModelProviderConfig {
     modelDirectory?: string;
     modelDirectories?: string[];

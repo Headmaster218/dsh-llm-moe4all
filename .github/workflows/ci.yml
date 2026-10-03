@@ -11,16 +11,35 @@ jobs:
   test:
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
         dsh-version:
           - 0.1.1-rc.2
           - 0.1.5-rc.3
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: npm
+      - name: Use pinned npm
+        run: npm install --global npm@10.9.2
       - run: npm ci
-      - run: npm install --no-save --package-lock=false "@deepseek-ai/dsh-llm-pi-ai@${{ matrix.dsh-version }}"
+      - name: Install DSH compatibility line
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dshVersion = '${{ matrix.dsh-version }}'
+          $dshPackages = @(
+            "@deepseek-ai/dsh-client-locale@$dshVersion"
+            '@deepseek-ai/dsh-client-runtime@0.1.1-rc.2'
+            "@deepseek-ai/dsh-client-ui-settings@$dshVersion"
+            "@deepseek-ai/dsh-client-ui-slots@$dshVersion"
+            "@deepseek-ai/dsh-credentials@$dshVersion"
+            "@deepseek-ai/dsh-host-webserver@$dshVersion"
+            "@deepseek-ai/dsh-llm-pi-ai@$dshVersion"
+            "@deepseek-ai/dsh-settings@$dshVersion"
+          )
+          & npm install --no-save --package-lock=false --legacy-peer-deps @dshPackages
+          if ($LASTEXITCODE -ne 0) { throw "DSH $dshVersion compatibility install failed" }
       - run: npm run check

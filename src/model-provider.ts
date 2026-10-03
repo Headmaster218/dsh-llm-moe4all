@@ -1,7 +1,8 @@
 import { setTimeout as delay } from 'node:timers/promises'
-import { settingsNamespace, type SettingsPathOp } from '@deepseek-ai/dsh-settings'
+import type { SettingsNamespace, SettingsPathOp } from '@deepseek-ai/dsh-settings'
 
 import type { EngineLogger } from './engine-controller.js'
+import { settingsNamespace } from './settings-compat.js'
 
 export interface ModelProviderConfig {
   apiKeyEnv?: string
@@ -19,9 +20,9 @@ export interface DiscoveredModel {
 }
 
 export interface ProviderSettingsLike {
-  get(namespace: ReturnType<typeof settingsNamespace>): unknown
+  get(namespace: SettingsNamespace): unknown
   mutate(
-    namespace: ReturnType<typeof settingsNamespace>,
+    namespace: SettingsNamespace,
     operations: readonly SettingsPathOp[],
   ): Promise<void>
 }

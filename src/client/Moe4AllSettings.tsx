@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
-import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   Activity,
   ArrowDownToLine,
@@ -46,9 +46,17 @@ export interface Moe4AllSettingsInjected {
   pickDirectory(): Promise<string | null>
   save(next: Config): Promise<void>
 }
+interface Moe4AllSettingsFace {
+  pickDirectory(): Promise<string | null>
+  save(next: Config): Promise<void>
+  useMoe4AllSettings<S>(
+    selector: (snapshot: SettingsScopeSnapshot<Config>) => S,
+    equal?: (left: S, right: S) => boolean,
+  ): S
+}
 export type Moe4AllSettingsProps = PropsRuntime<'settings.section'> &
   PropsLocale<'settings.moe4all'> &
-  InjectFace<Moe4AllSettingsInjected>
+  Moe4AllSettingsFace
 type Tab = 'run' | 'engines' | 'diagnostics'
 type Confirmation = { kind: 'stop' | 'restart' | 'discard' } | { kind: 'delete'; version: InstalledEngine }
 const phases: Record<string, Moe4AllLocaleKey> = {
