@@ -49,12 +49,13 @@ export declare class ModelProviderBridge {
     private readonly config;
     private readonly logger;
     private readonly resolveApiKey;
+    private readonly enabled;
     private readonly abort;
     private signature;
     private lastError;
     private syncInFlight;
     private discovered;
-    constructor(settings: ProviderSettingsLike, endpoint: URL, config: ModelProviderConfig, logger: EngineLogger, resolveApiKey?: () => Promise<string | undefined>);
+    constructor(settings: ProviderSettingsLike, endpoint: URL, config: ModelProviderConfig, logger: EngineLogger, resolveApiKey?: () => Promise<string | undefined>, enabled?: () => boolean);
     run(): Promise<void>;
     get models(): DiscoveredModel[];
     refreshNow(): Promise<void>;

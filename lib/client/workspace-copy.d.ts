@@ -17,7 +17,7 @@ declare const copy: {
     readonly failedStatus: readonly ["Startup failed", "启动失败"];
     readonly checkingStatus: readonly ["Checking connection", "正在检查连接"];
     readonly busyStatus: readonly ["Confirmation needed", "等待确认"];
-    readonly duplicateStatus: readonly ["Engine already running elsewhere", "检测到其他引擎进程"];
+    readonly portConflictStatus: readonly ["Port conflict", "端口冲突"];
     readonly pluginOwned: readonly ["Started here", "由插件启动"];
     readonly externalOwned: readonly ["Existing service", "已有服务"];
     readonly setupTitle: readonly ["Get ready to run", "准备开始"];
@@ -142,6 +142,7 @@ declare const copy: {
     readonly missingModelError: readonly ["Choose a language model first.", "请先选择语言模型。"];
     readonly missingEngineError: readonly ["Install or select an engine first.", "请先安装或选择引擎。"];
     readonly invalidTokens: readonly ["Enter a positive token count, such as 32768 or 32k.", "请输入有效的正数 Token 数量，例如 32768 或 32k。"];
+    readonly invalidPort: readonly ["Enter a port from 1 to 65535.", "请输入 1 到 65535 之间的端口。"];
     readonly importError: readonly ["No matching GGUF was found at this path.", "此路径下未找到对应类型的 GGUF。"];
     readonly invalidExtra: readonly ["Use a JSON array of strings. Set the model and common options in their fields, not here.", "请输入字符串 JSON 数组；模型路径与常用设置请在对应控件中填写，不要重复覆盖。"];
     readonly discardTitle: readonly ["Discard unsaved changes?", "放弃未保存的更改？"];
@@ -178,7 +179,10 @@ declare const copy: {
     readonly progressExtracting: readonly ["Extracting engine", "正在解压引擎"];
     readonly progressFinalizing: readonly ["Finishing installation", "正在完成安装"];
     readonly stopTransfer: readonly ["Stop download", "停止下载"];
-    readonly externalProcessHelp: readonly ["Connect to its actual address, or stop it before starting another engine.", "请连接该进程的实际地址，或先将其停止。"];
+    readonly portConflictTitle: readonly ["Port already in use", "端口已被占用"];
+    readonly portConflictBody: readonly ["Another service is using the configured port. Choose an available port to start a separate MoE4All engine.", "当前端口已被其他服务占用。请选择一个可用端口，以启动独立的 MoE4All 引擎。"];
+    readonly availablePort: readonly ["Port to use", "用于启动的端口"];
+    readonly changePortAndStart: readonly ["Use this port and start", "使用此端口并启动"];
 };
 export type WorkspaceKey = keyof typeof copy;
 export declare const workspaceEn: Record<WorkspaceKey, string>;

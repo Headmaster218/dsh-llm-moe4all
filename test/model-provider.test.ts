@@ -127,3 +127,28 @@ test('provider bridge persists the live endpoint and activates the discovered mo
   await bridge.dispose()
   await server.close()
 })
+
+test('provider bridge ignores an external endpoint until local engine ownership is established', async () => {
+  const server = await modelServer()
+  const settings = new FakeSettings()
+  const before = structuredClone(settings.values)
+  let enabled = false
+  const bridge = new ModelProviderBridge(
+    settings,
+    server.endpoint,
+    {},
+    quietLogger,
+    async () => undefined,
+    () => enabled,
+  )
+
+  await bridge.refreshNow()
+  assert.deepEqual(bridge.models, [])
+  assert.deepEqual(settings.values, before)
+  enabled = true
+  await bridge.refreshNow()
+  assert.deepEqual(bridge.models, [{ id: 'Qwen3.8-Flash', name: 'Qwen3.8-Flash' }])
+
+  await bridge.dispose()
+  await server.close()
+})

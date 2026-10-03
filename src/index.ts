@@ -35,10 +35,8 @@ export const Config = z.object({
   workingDirectory: z.string().role('path').default(''),
   apiKeyEnv: z.string().default(DEFAULT_API_KEY_REF),
   allowRemoteEndpoint: z.boolean().default(false),
-  processNames: z.array(z.string()).default(['infr.exe', 'moe4all.exe', 'infr', 'moe4all']),
   minimumFreeRamFraction: z.number().min(0).max(1).default(0.5),
   minimumFreeVramFraction: z.number().min(0).max(1).default(0.5),
-  promptWhenBusy: z.boolean().default(true),
   resourceProbeTimeoutMs: z.number().step(1).min(100).default(10_000),
   startupTimeoutMs: z.number().step(1).min(1000).default(120_000),
   healthTimeoutMs: z.number().step(1).min(100).default(2_000),
@@ -99,6 +97,7 @@ function startRuntime(
     resolved,
     ctx.logger,
     () => apiKeys.clientKey(resolved),
+    () => resolved.mode === 'connect' || controller.ownsProcess,
   )
   const startup = controller.ensureReady(allowAutomatic).catch((error: unknown) => {
     ctx.logger.error(error instanceof Error ? error : new Error(String(error)))
@@ -229,10 +228,8 @@ const plugin = { name, inject, Config, apply }
 export default plugin
 export {
   EngineController,
-  detectRunningEngines,
   effectiveLaunchMode,
   endpointFromConfig,
-  parseTasklistCsv,
   probeEngineResources,
   probeHealth,
   resolveEngineExecutable,
@@ -247,7 +244,6 @@ export type {
   EngineStartResult,
   LaunchMode,
   ResourceSnapshot,
-  RunningProcess,
 } from './engine-controller.js'
 export { EngineReleaseManager, releaseFromTag, selectRelease } from './engine-release.js'
 export type { EngineBootstrapResult, EngineInstallProgress, EngineInstallStage, EngineReleaseStatus, InstalledEngine, SelectedRelease } from './engine-release.js'

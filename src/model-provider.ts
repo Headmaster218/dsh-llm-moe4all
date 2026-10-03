@@ -180,6 +180,7 @@ export class ModelProviderBridge {
     private readonly config: ModelProviderConfig,
     private readonly logger: EngineLogger,
     private readonly resolveApiKey: () => Promise<string | undefined> = async () => undefined,
+    private readonly enabled: () => boolean = () => true,
   ) {}
 
   async run(): Promise<void> {
@@ -213,6 +214,7 @@ export class ModelProviderBridge {
   }
 
   private async syncOnce(): Promise<void> {
+    if (!this.enabled()) return
     try {
       const current = this.settings.get(PI_AI_NAMESPACE)
       if (!isRecord(current)) throw new Error('llm-pi-ai settings are not active yet')

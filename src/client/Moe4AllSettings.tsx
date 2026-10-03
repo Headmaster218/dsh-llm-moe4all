@@ -68,7 +68,7 @@ const phases: Record<string, Moe4AllLocaleKey> = {
   'missing-executable': 'notConfigured',
   'missing-arguments': 'notConfigured',
   'resource-warning': 'busyStatus',
-  'duplicate-process': 'duplicateStatus',
+  'port-conflict': 'portConflictStatus',
 }
 
 export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
@@ -138,6 +138,8 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
   const firstEngineSetup = local && !engineSelected
   const needsRestart = owned && (w.dirty || w.status?.pendingChanges || (!ready && !starting))
   const endpoint = endpointFromConfig(e.config)
+  const candidatePort = Number(w.portCandidate)
+  const candidatePortValid = Number.isInteger(candidatePort) && candidatePort >= 1 && candidatePort <= 65_535
   const output = (w.status?.startupLines ?? []).join('\n')
   const engineTask = w.release?.install
   const modelTask = w.download
@@ -554,7 +556,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
           </section>
         ) : (
         <>
-          {(ready || starting || w.status?.phase === 'error' || w.status?.phase === 'duplicate-process') && (
+          {(ready || starting || w.status?.phase === 'error' || w.status?.phase === 'port-conflict') && (
             <section className="m4a-runtime">
               <div className="m4a-section-heading">
                 <h3>
@@ -614,7 +616,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
                   </span>
                 </>
               )}
-              {w.status?.phase === 'duplicate-process' && <p>{t('externalProcessHelp')}</p>}
+              {w.status?.phase === 'port-conflict' && <p>{t('portConflictBody')}</p>}
               {(starting || w.status?.phase === 'error') && (
                 <pre className="m4a-log m4a-log--preview">{output || w.status?.message || t('noOutput')}</pre>
               )}
@@ -923,6 +925,37 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
           {w.status?.reasons?.map((reason) => (
             <p key={reason}>{reason}</p>
           ))}
+        </Dialog>
+      )}
+      {w.portPrompt && (
+        <Dialog
+          title={t('portConflictTitle')}
+          closeLabel={t('cancel')}
+          onClose={() => w.setPortPrompt(false)}
+          actions={
+            <>
+              <Button onClick={() => w.setPortPrompt(false)}>{t('cancel')}</Button>
+              <Button
+                kind="primary"
+                disabled={!candidatePortValid}
+                onClick={() => void w.launchAtPort(candidatePort)}
+              >
+                {t('changePortAndStart')}
+              </Button>
+            </>
+          }
+        >
+          <p>{t('portConflictBody')}</p>
+          <Field label={t('availablePort')}>
+            <input
+              type="number"
+              min={1}
+              max={65_535}
+              value={w.portCandidate}
+              onChange={(event) => w.setPortCandidate(event.target.value)}
+            />
+          </Field>
+          {w.status?.message && <p>{w.status.message}</p>}
         </Dialog>
       )}
     </div>

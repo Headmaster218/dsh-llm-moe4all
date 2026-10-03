@@ -24,10 +24,8 @@ export declare const Config: z<Schemastery.ObjectS<{
     workingDirectory: z<string, string>;
     apiKeyEnv: z<string, string>;
     allowRemoteEndpoint: z<boolean, boolean>;
-    processNames: z<string[], string[]>;
     minimumFreeRamFraction: z<number, number>;
     minimumFreeVramFraction: z<number, number>;
-    promptWhenBusy: z<boolean, boolean>;
     resourceProbeTimeoutMs: z<number, number>;
     startupTimeoutMs: z<number, number>;
     healthTimeoutMs: z<number, number>;
@@ -57,10 +55,8 @@ export declare const Config: z<Schemastery.ObjectS<{
     workingDirectory: z<string, string>;
     apiKeyEnv: z<string, string>;
     allowRemoteEndpoint: z<boolean, boolean>;
-    processNames: z<string[], string[]>;
     minimumFreeRamFraction: z<number, number>;
     minimumFreeVramFraction: z<number, number>;
-    promptWhenBusy: z<boolean, boolean>;
     resourceProbeTimeoutMs: z<number, number>;
     startupTimeoutMs: z<number, number>;
     healthTimeoutMs: z<number, number>;
@@ -95,10 +91,8 @@ declare const plugin: {
         workingDirectory: z<string, string>;
         apiKeyEnv: z<string, string>;
         allowRemoteEndpoint: z<boolean, boolean>;
-        processNames: z<string[], string[]>;
         minimumFreeRamFraction: z<number, number>;
         minimumFreeVramFraction: z<number, number>;
-        promptWhenBusy: z<boolean, boolean>;
         resourceProbeTimeoutMs: z<number, number>;
         startupTimeoutMs: z<number, number>;
         healthTimeoutMs: z<number, number>;
@@ -128,10 +122,8 @@ declare const plugin: {
         workingDirectory: z<string, string>;
         apiKeyEnv: z<string, string>;
         allowRemoteEndpoint: z<boolean, boolean>;
-        processNames: z<string[], string[]>;
         minimumFreeRamFraction: z<number, number>;
         minimumFreeVramFraction: z<number, number>;
-        promptWhenBusy: z<boolean, boolean>;
         resourceProbeTimeoutMs: z<number, number>;
         startupTimeoutMs: z<number, number>;
         healthTimeoutMs: z<number, number>;
@@ -153,8 +145,8 @@ declare const plugin: {
     apply: typeof apply;
 };
 export default plugin;
-export { EngineController, detectRunningEngines, effectiveLaunchMode, endpointFromConfig, parseTasklistCsv, probeEngineResources, probeHealth, resolveEngineExecutable, validateEndpoint, } from './engine-controller.js';
-export type { EffectiveLaunchMode, EngineConfig, EngineLogger, EnginePhase, EngineRuntimeStatus, EngineStartResult, LaunchMode, ResourceSnapshot, RunningProcess, } from './engine-controller.js';
+export { EngineController, effectiveLaunchMode, endpointFromConfig, probeEngineResources, probeHealth, resolveEngineExecutable, validateEndpoint, } from './engine-controller.js';
+export type { EffectiveLaunchMode, EngineConfig, EngineLogger, EnginePhase, EngineRuntimeStatus, EngineStartResult, LaunchMode, ResourceSnapshot, } from './engine-controller.js';
 export { EngineReleaseManager, releaseFromTag, selectRelease } from './engine-release.js';
 export type { EngineBootstrapResult, EngineInstallProgress, EngineInstallStage, EngineReleaseStatus, InstalledEngine, SelectedRelease } from './engine-release.js';
 export { ENGINE_PATHS, isLoopbackRequest, makeEngineRoutes } from './host-routes.js';

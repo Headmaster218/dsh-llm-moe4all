@@ -2,7 +2,8 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { constants as fsConstants } from 'node:fs'
 import { access } from 'node:fs/promises'
 import { freemem, totalmem, networkInterfaces } from 'node:os'
-import { basename, delimiter, dirname, extname, isAbsolute, join, resolve } from 'node:path'
+import { createServer } from 'node:net'
+import { delimiter, dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import { createInterface, type Interface as ReadLineInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
@@ -21,7 +22,7 @@ export type EnginePhase =
   | 'resource-warning'
   | 'missing-executable'
   | 'missing-arguments'
-  | 'duplicate-process'
+  | 'port-conflict'
   | 'error'
 
 export interface EngineConfig {
@@ -37,10 +38,8 @@ export interface EngineConfig {
   workingDirectory?: string
   apiKeyEnv?: string
   allowRemoteEndpoint?: boolean
-  processNames?: string[]
   minimumFreeRamFraction?: number
   minimumFreeVramFraction?: number
-  promptWhenBusy?: boolean
   resourceProbeTimeoutMs?: number
   startupTimeoutMs?: number
   healthTimeoutMs?: number
@@ -54,11 +53,6 @@ export interface EngineLogger {
   info(message: string): void
   warn(message: string): void
   error(message: string | Error): void
-}
-
-export interface RunningProcess {
-  name: string
-  pid: number
 }
 
 export interface ResourceSnapshot {
@@ -90,7 +84,7 @@ export interface EngineRuntimeStatus {
   message?: string
   reasons?: string[]
   resources?: ResourceSnapshot
-  processes?: RunningProcess[]
+  suggestedPort?: number
   startupStartedAt?: string
   startupLines?: string[]
   metrics?: EngineRuntimeMetrics
@@ -102,7 +96,6 @@ export interface EngineStartResult {
 }
 
 export interface EngineControllerDependencies {
-  detectProcesses(processNames: string[]): Promise<RunningProcess[]>
   probeResources(executable: string, config: EngineConfig): Promise<ResourceSnapshot>
   resolveApiKey(): Promise<string | undefined>
 }
@@ -119,10 +112,8 @@ export const DEFAULT_CONFIG = {
   workingDirectory: '',
   apiKeyEnv: '',
   allowRemoteEndpoint: false,
-  processNames: ['infr.exe', 'moe4all.exe', 'infr', 'moe4all'],
   minimumFreeRamFraction: 0.5,
   minimumFreeVramFraction: 0.5,
-  promptWhenBusy: true,
   resourceProbeTimeoutMs: 10_000,
   startupTimeoutMs: 120_000,
   healthTimeoutMs: 2_000,
@@ -158,7 +149,6 @@ function resolvedConfig(config: EngineConfig): ResolvedEngineConfig {
     ...DEFAULT_CONFIG,
     ...config,
     arguments: [...(config.arguments ?? DEFAULT_CONFIG.arguments)],
-    processNames: [...(config.processNames ?? DEFAULT_CONFIG.processNames)],
   }
 }
 
@@ -173,6 +163,33 @@ function isLocalAddress(hostname: string): boolean {
 
 function healthUrl(endpoint: URL): URL {
   return new URL('/health', endpoint.origin)
+}
+
+async function portAvailable(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    const server = createServer()
+    server.once('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EADDRINUSE' || error.code === 'EACCES') resolve(false)
+      else reject(error)
+    })
+    server.listen(port, host, () => server.close(() => resolve(true)))
+  })
+}
+
+async function availablePort(host: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer()
+    server.once('error', reject)
+    server.listen(0, host, () => {
+      const address = server.address()
+      if (address === null || typeof address === 'string') {
+        server.close()
+        reject(new Error(`could not select an available port on ${host}`))
+        return
+      }
+      server.close((error) => error ? reject(error) : resolve(address.port))
+    })
+  })
 }
 
 function authorizationHeaderValue(apiKey?: string): Record<string, string> {
@@ -292,36 +309,6 @@ function captureProcess(
       resolveCapture({ exitCode: code ?? -1, stdout, stderr })
     })
   })
-}
-
-export function parseTasklistCsv(output: string): RunningProcess[] {
-  const processes: RunningProcess[] = []
-  for (const line of output.split(/\r?\n/u)) {
-    const match = /^"((?:[^"]|"")*)","(\d+)"/u.exec(line.trim())
-    if (match === null) continue
-    processes.push({ name: match[1]!.replaceAll('""', '"'), pid: Number(match[2]) })
-  }
-  return processes
-}
-
-export async function detectRunningEngines(processNames: string[]): Promise<RunningProcess[]> {
-  const wanted = new Set(processNames.map((name) => basename(name).toLowerCase()))
-  let result: CapturedProcess
-  let processes: RunningProcess[]
-  if (process.platform === 'win32') {
-    result = await captureProcess('tasklist.exe', ['/FO', 'CSV', '/NH'], 5_000)
-    processes = parseTasklistCsv(result.stdout)
-  } else {
-    result = await captureProcess('ps', ['-A', '-o', 'pid=,comm='], 5_000)
-    processes = result.stdout.split(/\r?\n/u).flatMap((line) => {
-      const match = /^\s*(\d+)\s+(.+?)\s*$/u.exec(line)
-      return match === null ? [] : [{ pid: Number(match[1]), name: basename(match[2]!) }]
-    })
-  }
-  if (result.exitCode !== 0) {
-    throw new Error(`process inspection failed (${result.exitCode}): ${result.stderr.trim()}`)
-  }
-  return processes.filter((item) => item.pid !== process.pid && wanted.has(item.name.toLowerCase()))
 }
 
 function probeArguments(arguments_: string[]): string[] {
@@ -499,7 +486,6 @@ function cleanOutputLine(line: string): string {
 }
 
 const DEFAULT_DEPENDENCIES: EngineControllerDependencies = {
-  detectProcesses: detectRunningEngines,
   probeResources: probeEngineResources,
   resolveApiKey: async () => undefined,
 }
@@ -580,13 +566,41 @@ export class EngineController {
 
   get isStarting(): boolean { return this.startPromise !== undefined }
 
+  private get bindHost(): string {
+    const configured = this.config.endpoint.trim() ? this.endpoint.hostname : this.config.host
+    return configured.replace(/^\[|\]$/gu, '')
+  }
+
+  private get bindPort(): number {
+    return Number(this.endpoint.port || (this.endpoint.protocol === 'https:' ? 443 : 80))
+  }
+
+  private async portConflict(message: string, executable?: string): Promise<EngineRuntimeStatus> {
+    let suggestedPort: number | undefined
+    try {
+      suggestedPort = await availablePort(this.bindHost)
+    } catch (error) {
+      this.logger.warn(`MoE4All could not select an available port: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    return this.setStatus({
+      phase: 'port-conflict',
+      ready: false,
+      canStart: true,
+      ...(executable === undefined ? {} : { executable }),
+      ...(suggestedPort === undefined ? {} : { suggestedPort }),
+      message,
+    })
+  }
+
   async refreshStatus(): Promise<EngineRuntimeStatus> {
-    if (await probeHealthWithApiKey(
+    const mode = effectiveLaunchMode(this.config.mode)
+    const healthy = await probeHealthWithApiKey(
       this.endpoint,
       this.config.healthTimeoutMs,
       await this.dependencies.resolveApiKey(),
       this.abort.signal,
-    )) {
+    )
+    if (healthy && (this.ownsProcess || mode === 'connect')) {
       return this.setStatus({
         phase: 'ready',
         ready: true,
@@ -595,10 +609,13 @@ export class EngineController {
       })
     }
 
+    if (this.currentStatus.phase === 'port-conflict' && !await portAvailable(this.bindHost, this.bindPort)) {
+      return this.statusSnapshot()
+    }
     if (this.currentStatus.phase === 'starting' || this.currentStatus.phase === 'resource-warning' || this.currentStatus.phase === 'error') {
       return this.statusSnapshot()
     }
-    if (effectiveLaunchMode(this.config.mode) === 'connect') {
+    if (mode === 'connect') {
       return this.setStatus({ phase: 'offline', ready: false, canStart: false, message: 'The configured service is not reachable.' })
     }
     if (!isLocalAddress(this.endpoint.hostname)) {
@@ -705,14 +722,6 @@ export class EngineController {
     }
   }
 
-  private processNames(executable: string): string[] {
-    return [...new Set([...this.config.processNames, basename(executable)])]
-  }
-
-  private async findExistingEngine(executable: string): Promise<RunningProcess[]> {
-    return this.dependencies.detectProcesses(this.processNames(executable))
-  }
-
   private async resourceAssessment(executable: string): Promise<StartupPrompt> {
     let resources: ResourceSnapshot | undefined
     const reasons: string[] = []
@@ -773,19 +782,13 @@ export class EngineController {
       }
     }
 
-    const existing = await this.findExistingEngine(executable)
-    if (existing.length > 0) {
-      const detail = existing.map((item) => `${item.name} (PID ${item.pid})`).join(', ')
+    if (!await portAvailable(this.bindHost, this.bindPort)) {
       return {
         ok: false,
-        status: this.setStatus({
-          phase: 'duplicate-process',
-          ready: false,
-          canStart: false,
+        status: await this.portConflict(
+          `Port ${this.bindPort} on ${this.bindHost} is already in use. Choose another port to start a separate MoE4All engine.`,
           executable,
-          processes: existing,
-          message: `Another MoE4All engine process already exists: ${detail}. Configure its actual IP and port instead.`,
-        }),
+        ),
       }
     }
 
@@ -806,19 +809,13 @@ export class EngineController {
       }
     }
 
-    const raced = await this.findExistingEngine(executable)
-    if (raced.length > 0) {
-      const detail = raced.map((item) => `${item.name} (PID ${item.pid})`).join(', ')
+    if (!await portAvailable(this.bindHost, this.bindPort)) {
       return {
         ok: false,
-        status: this.setStatus({
-          phase: 'duplicate-process',
-          ready: false,
-          canStart: false,
+        status: await this.portConflict(
+          `Port ${this.bindPort} on ${this.bindHost} became occupied before startup. Choose another port and try again.`,
           executable,
-          processes: raced,
-          message: `Another MoE4All engine appeared during startup: ${detail}.`,
-        }),
+        ),
       }
     }
 

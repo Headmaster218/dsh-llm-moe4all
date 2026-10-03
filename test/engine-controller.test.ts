@@ -7,7 +7,6 @@ import { test } from 'node:test'
 import {
   EngineController,
   endpointFromConfig,
-  parseTasklistCsv,
   probeHealth,
   runtimeLogFilter,
   validateEndpoint,
@@ -31,8 +30,8 @@ const idleResources: ResourceSnapshot = {
 
 function dependencies(overrides: Partial<EngineControllerDependencies> = {}): EngineControllerDependencies {
   return {
-    detectProcesses: async () => [],
     probeResources: async () => idleResources,
+    resolveApiKey: async () => undefined,
     ...overrides,
   }
 }
@@ -63,17 +62,6 @@ test('remote endpoints require explicit opt-in', () => {
   assert.equal(validateEndpoint('https://example.com/v1', true).hostname, 'example.com')
 })
 
-test('tasklist CSV parsing is independent of localized column headings', () => {
-  const parsed = parseTasklistCsv([
-    '"infr.exe","4212","Console","1","1,024 K"',
-    '"other.exe","99","Console","1","2,048 K"',
-  ].join('\r\n'))
-  assert.deepEqual(parsed, [
-    { name: 'infr.exe', pid: 4212 },
-    { name: 'other.exe', pid: 99 },
-  ])
-})
-
 test('managed output capture keeps server metrics visible under restrictive host logging', () => {
   assert.equal(runtimeLogFilter(undefined), undefined)
   assert.equal(runtimeLogFilter('warn'), 'warn,infr_server=info')
@@ -100,6 +88,65 @@ test('connect mode reuses a healthy engine', async () => {
   assert.equal(await probeHealth(endpoint, 500), true)
   server.close()
   await once(server, 'close')
+})
+
+test('managed modes do not silently claim a healthy external endpoint', async () => {
+  const server = createServer((_request, response) => {
+    response.writeHead(200)
+    response.end('ok')
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address()
+  assert(address && typeof address === 'object')
+
+  const controller = new EngineController({
+    mode: 'auto',
+    endpoint: `http://127.0.0.1:${address.port}/v1`,
+    executable: process.execPath,
+    arguments: ['unused'],
+  }, quietLogger, dependencies())
+  try {
+    assert.equal(await controller.ensureReady(), false)
+    assert.equal(controller.statusSnapshot().phase, 'port-conflict')
+    assert.notEqual(controller.statusSnapshot().suggestedPort, address.port)
+    assert.equal((await controller.requestStart(true)).status.phase, 'port-conflict')
+    assert.equal(controller.statusSnapshot().owned, false)
+    assert.equal(await probeHealth(new URL(`http://127.0.0.1:${address.port}/v1`), 500), true)
+  } finally {
+    await controller.dispose(true)
+    server.close()
+    await once(server, 'close')
+  }
+})
+
+test('prompt mode reports a port conflict only after a manual start request', async () => {
+  const server = createServer((_request, response) => {
+    response.writeHead(200)
+    response.end('ok')
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address()
+  assert(address && typeof address === 'object')
+  const controller = new EngineController({
+    mode: 'prompt',
+    endpoint: `http://127.0.0.1:${address.port}/v1`,
+    executable: process.execPath,
+    arguments: ['unused'],
+  }, quietLogger, dependencies())
+  try {
+    assert.equal(await controller.ensureReady(), false)
+    assert.equal(controller.statusSnapshot().phase, 'offline')
+    const result = await controller.requestStart()
+    assert.equal(result.ok, false)
+    assert.equal(result.status.phase, 'port-conflict')
+    assert(result.status.suggestedPort && result.status.suggestedPort > 0)
+  } finally {
+    await controller.dispose(true)
+    server.close()
+    await once(server, 'close')
+  }
 })
 
 test('auto mode starts and stops a configured engine only when the machine is idle', async () => {
@@ -146,18 +193,16 @@ test('applying saved auto settings can defer startup, then explicitly stop an ow
 
 test('testing an offline connection never starts a saved local engine', async () => {
   const port = await unusedPort()
-  let detected = false
   const controller = new EngineController({
     mode: 'connect', port, executable: process.execPath,
     arguments: [join(import.meta.dirname, 'fake-engine.mjs'), String(port)],
     healthTimeoutMs: 100,
-  }, quietLogger, dependencies({ detectProcesses: async () => { detected = true; return [] } }))
+  }, quietLogger, dependencies())
   try {
     const result = await controller.requestStart(true)
     assert.equal(result.ok, false)
     assert.equal(result.status.phase, 'offline')
     assert.equal(controller.ownsProcess, false)
-    assert.equal(detected, false)
   } finally { await controller.dispose(true) }
 })
 
@@ -218,25 +263,37 @@ test('automatic startup leaves the native auto profile unchanged', async () => {
   await controller.dispose()
 })
 
-test('an existing engine process prevents a second launch regardless of endpoint', async () => {
-  const port = await unusedPort()
-  let probed = false
-  const controller = new EngineController({
+test('two managed engines can run at the same time on separate ports', async () => {
+  const firstPort = await unusedPort()
+  let secondPort = await unusedPort()
+  while (secondPort === firstPort) secondPort = await unusedPort()
+  const first = new EngineController({
     mode: 'auto',
-    endpoint: `http://127.0.0.1:${port}/v1`,
+    endpoint: `http://127.0.0.1:${firstPort}/v1`,
     executable: process.execPath,
-    arguments: ['unused'],
-  }, quietLogger, dependencies({
-    detectProcesses: async () => [{ name: 'infr.exe', pid: 1234 }],
-    probeResources: async () => {
-      probed = true
-      return idleResources
-    },
-  }))
+    arguments: [join(import.meta.dirname, 'fake-engine.mjs'), String(firstPort)],
+    startupTimeoutMs: 5_000,
+    healthTimeoutMs: 250,
+    pollIntervalMs: 25,
+  }, quietLogger, dependencies())
+  const second = new EngineController({
+    mode: 'auto',
+    endpoint: `http://127.0.0.1:${secondPort}/v1`,
+    executable: process.execPath,
+    arguments: [join(import.meta.dirname, 'fake-engine.mjs'), String(secondPort)],
+    startupTimeoutMs: 5_000,
+    healthTimeoutMs: 250,
+    pollIntervalMs: 25,
+  }, quietLogger, dependencies())
 
-  assert.equal(await controller.ensureReady(), false)
-  assert.equal(probed, false)
-  await controller.dispose()
+  try {
+    assert.equal(await first.ensureReady(), true)
+    assert.equal(await second.ensureReady(), true)
+    assert.equal(first.statusSnapshot().owned, true)
+    assert.equal(second.statusSnapshot().owned, true)
+  } finally {
+    await Promise.all([first.dispose(true), second.dispose(true)])
+  }
 })
 
 test('exactly half-free resources return a structured confirmation request', async () => {
@@ -289,22 +346,15 @@ test('busy startup proceeds only after an explicit confirmation', async () => {
 
 test('prompt mode never starts the engine before a manual request', async () => {
   const port = await unusedPort()
-  let processChecks = 0
   const controller = new EngineController({
     mode: 'prompt',
     endpoint: `http://127.0.0.1:${port}/v1`,
     executable: process.execPath,
     arguments: [join(import.meta.dirname, 'fake-engine.mjs'), String(port)],
     healthTimeoutMs: 100,
-  }, quietLogger, dependencies({
-    detectProcesses: async () => {
-      processChecks += 1
-      return []
-    },
-  }))
+  }, quietLogger, dependencies())
 
   assert.equal(await controller.ensureReady(), false)
   assert.equal(controller.statusSnapshot().phase, 'offline')
-  assert.equal(processChecks, 0)
   await controller.dispose()
 })
