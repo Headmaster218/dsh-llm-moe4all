@@ -11,6 +11,8 @@ export interface Config extends EngineConfig, ModelProviderConfig {
     modelDirectories?: string[];
     modelDirectoriesConfigured?: boolean;
     statusDisplay?: 'hover' | 'always' | 'hidden';
+    bundledDistribution?: boolean;
+    bootstrapEngineOnStart?: boolean;
 }
 export declare const Config: z<Schemastery.ObjectS<{
     mode: z<"connect" | "prompt" | "auto" | "managed", "connect" | "prompt" | "auto" | "managed">;
@@ -43,6 +45,8 @@ export declare const Config: z<Schemastery.ObjectS<{
     modelRefreshIntervalMs: z<number, number>;
     modelDiscoveryTimeoutMs: z<number, number>;
     statusDisplay: z<"hover" | "always" | "hidden", "hover" | "always" | "hidden">;
+    bundledDistribution: z<boolean, boolean>;
+    bootstrapEngineOnStart: z<boolean, boolean>;
 }>, Schemastery.ObjectT<{
     mode: z<"connect" | "prompt" | "auto" | "managed", "connect" | "prompt" | "auto" | "managed">;
     protocol: z<"http" | "https", "http" | "https">;
@@ -74,6 +78,8 @@ export declare const Config: z<Schemastery.ObjectS<{
     modelRefreshIntervalMs: z<number, number>;
     modelDiscoveryTimeoutMs: z<number, number>;
     statusDisplay: z<"hover" | "always" | "hidden", "hover" | "always" | "hidden">;
+    bundledDistribution: z<boolean, boolean>;
+    bootstrapEngineOnStart: z<boolean, boolean>;
 }>>;
 export declare function apply(ctx: Context, config: Config): () => Promise<void>;
 declare const plugin: {
@@ -110,6 +116,8 @@ declare const plugin: {
         modelRefreshIntervalMs: z<number, number>;
         modelDiscoveryTimeoutMs: z<number, number>;
         statusDisplay: z<"hover" | "always" | "hidden", "hover" | "always" | "hidden">;
+        bundledDistribution: z<boolean, boolean>;
+        bootstrapEngineOnStart: z<boolean, boolean>;
     }>, Schemastery.ObjectT<{
         mode: z<"connect" | "prompt" | "auto" | "managed", "connect" | "prompt" | "auto" | "managed">;
         protocol: z<"http" | "https", "http" | "https">;
@@ -141,6 +149,8 @@ declare const plugin: {
         modelRefreshIntervalMs: z<number, number>;
         modelDiscoveryTimeoutMs: z<number, number>;
         statusDisplay: z<"hover" | "always" | "hidden", "hover" | "always" | "hidden">;
+        bundledDistribution: z<boolean, boolean>;
+        bootstrapEngineOnStart: z<boolean, boolean>;
     }>>;
     apply: typeof apply;
 };
