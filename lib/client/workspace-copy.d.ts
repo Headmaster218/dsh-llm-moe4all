@@ -26,6 +26,8 @@ declare const copy: {
     readonly stepStart: readonly ["Start chatting", "启动使用"];
     readonly firstInstallRunning: readonly ["Preparing the MoE4All engine", "正在准备 MoE4All 引擎"];
     readonly firstInstallRunningBody: readonly ["The official release is downloading and will be configured automatically. You can leave this page open.", "正在下载官方发行版，完成后会自动配置。保持此页面打开即可。"];
+    readonly firstInstallChoice: readonly ["Choose an engine", "选择引擎"];
+    readonly firstInstallChoiceBody: readonly ["Download the official engine, or use a ZIP, folder, or infr.exe already on this computer. The engine will not start until you configure a model.", "可以下载官方引擎，或使用本机已有的 ZIP、目录或 infr.exe。配置模型前不会启动引擎。"];
     readonly firstInstallAttention: readonly ["Engine setup needs attention", "引擎安装需要处理"];
     readonly firstInstallAttentionBody: readonly ["Retry the automatic download, or import a ZIP, folder, or infr.exe you already downloaded.", "可以重试自动下载，或导入已经下载的 ZIP、目录或 infr.exe。"];
     readonly modelEmpty: readonly ["No model selected", "尚未选择模型"];

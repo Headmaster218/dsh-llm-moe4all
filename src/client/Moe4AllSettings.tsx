@@ -136,6 +136,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
   )
   const currentModel = w.library.models.find((item) => samePath(item.path, e.setup.model))
   const firstEngineSetup = local && !engineSelected
+  const engineInstallFailed = w.release?.install.stage === 'error' || w.release?.install.stage === 'cancelled'
   const needsRestart = owned && (w.dirty || w.status?.pendingChanges || (!ready && !starting))
   const endpoint = endpointFromConfig(e.config)
   const candidatePort = Number(w.portCandidate)
@@ -540,13 +541,13 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
               {isInstalling(w.release) ? <RefreshCw size={28} className="m4a-spin" /> : <Package size={28} />}
             </div>
             <div>
-              <h3>{t(isInstalling(w.release) ? 'firstInstallRunning' : 'firstInstallAttention')}</h3>
-              <p>{t(isInstalling(w.release) ? 'firstInstallRunningBody' : 'firstInstallAttentionBody')}</p>
+              <h3>{t(isInstalling(w.release) ? 'firstInstallRunning' : engineInstallFailed ? 'firstInstallAttention' : 'firstInstallChoice')}</h3>
+              <p>{t(isInstalling(w.release) ? 'firstInstallRunningBody' : engineInstallFailed ? 'firstInstallAttentionBody' : 'firstInstallChoiceBody')}</p>
             </div>
             {!isInstalling(w.release) && (
               <div className="m4a-inline">
-                <Button kind="primary" icon={RefreshCw} onClick={() => void w.install()}>
-                  {t('retryDownload')}
+                <Button kind="primary" icon={engineInstallFailed ? RefreshCw : ArrowDownToLine} onClick={() => void w.install()}>
+                  {t(engineInstallFailed ? 'retryDownload' : 'installLatest')}
                 </Button>
                 <Button icon={FolderOpen} onClick={() => setTab('engines')}>
                   {t('useLocalDownload')}
