@@ -21,6 +21,8 @@ export interface Config extends EngineConfig, ModelProviderConfig {
   modelDirectories?: string[]
   modelDirectoriesConfigured?: boolean
   statusDisplay?: 'hover' | 'always' | 'hidden'
+  bundledDistribution?: boolean
+  bootstrapEngineOnStart?: boolean
 }
 
 export const Config = z.object({
@@ -54,6 +56,8 @@ export const Config = z.object({
   modelRefreshIntervalMs: z.number().step(1).min(1_000).default(15_000),
   modelDiscoveryTimeoutMs: z.number().step(1).min(100).default(3_000),
   statusDisplay: z.union(['hover', 'always', 'hidden']).default('hover'),
+  bundledDistribution: z.boolean().default(false),
+  bootstrapEngineOnStart: z.boolean().default(true),
 })
 
 interface ActiveRuntime {
@@ -133,7 +137,7 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
   const apiKeys = new ApiKeyManager(credentials)
   const releases = new EngineReleaseManager()
   const downloads = new ModelDownloadManager()
-  if (config.mode !== 'connect' && !config.executable?.trim()) {
+  if (config.bootstrapEngineOnStart && config.mode !== 'connect' && !config.executable?.trim()) {
     void releases.bootstrapLatest().then((result) => {
       if (result.started) ctx.logger.info('First MoE4All setup: downloading the latest official engine release.')
     }).catch((error: unknown) => {

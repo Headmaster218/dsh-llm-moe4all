@@ -67,7 +67,7 @@ export function apply(ctx: ClientContext): void {
       scope,
       t: ctx.locale.bind('settings.moe4all'),
     }),
-    createElement(PluginUpdateNotice, {
+    !scope.getSnapshot().value?.bundledDistribution && createElement(PluginUpdateNotice, {
       t: ctx.locale.bind('settings.moe4all'),
     }),
   )))
