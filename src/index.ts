@@ -23,37 +23,45 @@ export interface Config extends EngineConfig, ModelProviderConfig {
   statusDisplay?: 'hover' | 'always' | 'hidden'
 }
 
+interface OptionalVolatileSchema {
+  volatile?(): unknown
+}
+
+function editable<TSchema extends OptionalVolatileSchema>(schema: TSchema): TSchema {
+  return (typeof schema.volatile === 'function' ? schema.volatile() : schema) as TSchema
+}
+
 export const Config = z.object({
-  mode: z.union(['connect', 'prompt', 'auto', 'managed']).default('prompt'),
-  protocol: z.union(['http', 'https']).default('http'),
-  host: z.string().default('127.0.0.1'),
-  port: z.number().step(1).min(1).max(65_535).default(8080),
-  apiBasePath: z.string().default('/v1'),
-  endpoint: z.string().default(''),
-  executable: z.string().role('path').default(''),
-  arguments: z.array(z.string()).default([]),
-  workingDirectory: z.string().role('path').default(''),
-  apiKeyEnv: z.string().default(DEFAULT_API_KEY_REF),
-  allowRemoteEndpoint: z.boolean().default(false),
-  minimumFreeRamFraction: z.number().min(0).max(1).default(0.5),
-  minimumFreeVramFraction: z.number().min(0).max(1).default(0.5),
-  resourceProbeTimeoutMs: z.number().step(1).min(100).default(10_000),
-  startupTimeoutMs: z.number().step(1).min(1000).default(120_000),
-  healthTimeoutMs: z.number().step(1).min(100).default(2_000),
-  pollIntervalMs: z.number().step(1).min(50).default(500),
-  shutdownTimeoutMs: z.number().step(1).min(100).default(5_000),
-  stopOnUnload: z.boolean().default(true),
-  logOutput: z.boolean().default(true),
-  contextWindow: z.number().step(1).min(1).default(163_840),
-  maxTokens: z.number().step(1).min(1).default(102_400),
-  modelDirectory: z.string().role('path').default(''),
-  modelDirectories: z.array(z.string()).default([]),
-  modelDirectoriesConfigured: z.boolean().default(false),
-  vision: z.boolean().default(true),
-  excludeModelNameContains: z.array(z.string()).default(['embed', 'embedding']),
-  modelRefreshIntervalMs: z.number().step(1).min(1_000).default(15_000),
-  modelDiscoveryTimeoutMs: z.number().step(1).min(100).default(3_000),
-  statusDisplay: z.union(['hover', 'always', 'hidden']).default('hover'),
+  mode: editable(z.union(['connect', 'prompt', 'auto', 'managed']).default('prompt')),
+  protocol: editable(z.union(['http', 'https']).default('http')),
+  host: editable(z.string().default('127.0.0.1')),
+  port: editable(z.number().step(1).min(1).max(65_535).default(8080)),
+  apiBasePath: editable(z.string().default('/v1')),
+  endpoint: editable(z.string().default('')),
+  executable: editable(z.string().role('path').default('')),
+  arguments: editable(z.array(z.string()).default([])),
+  workingDirectory: editable(z.string().role('path').default('')),
+  apiKeyEnv: editable(z.string().default(DEFAULT_API_KEY_REF)),
+  allowRemoteEndpoint: editable(z.boolean().default(false)),
+  minimumFreeRamFraction: editable(z.number().min(0).max(1).default(0.5)),
+  minimumFreeVramFraction: editable(z.number().min(0).max(1).default(0.5)),
+  resourceProbeTimeoutMs: editable(z.number().step(1).min(100).default(10_000)),
+  startupTimeoutMs: editable(z.number().step(1).min(1000).default(120_000)),
+  healthTimeoutMs: editable(z.number().step(1).min(100).default(2_000)),
+  pollIntervalMs: editable(z.number().step(1).min(50).default(500)),
+  shutdownTimeoutMs: editable(z.number().step(1).min(100).default(5_000)),
+  stopOnUnload: editable(z.boolean().default(true)),
+  logOutput: editable(z.boolean().default(true)),
+  contextWindow: editable(z.number().step(1).min(1).default(163_840)),
+  maxTokens: editable(z.number().step(1).min(1).default(102_400)),
+  modelDirectory: editable(z.string().role('path').default('')),
+  modelDirectories: editable(z.array(z.string()).default([])),
+  modelDirectoriesConfigured: editable(z.boolean().default(false)),
+  vision: editable(z.boolean().default(true)),
+  excludeModelNameContains: editable(z.array(z.string()).default(['embed', 'embedding'])),
+  modelRefreshIntervalMs: editable(z.number().step(1).min(1_000).default(15_000)),
+  modelDiscoveryTimeoutMs: editable(z.number().step(1).min(100).default(3_000)),
+  statusDisplay: editable(z.union(['hover', 'always', 'hidden']).default('hover')),
 })
 
 interface ActiveRuntime {
@@ -69,15 +77,25 @@ interface PluginSettingsScope<T> {
 }
 
 interface PluginSettingsLike extends ProviderSettingsLike {
-  register<T>(
+  register?<T>(
     namespace: SettingsNamespace,
     schema: z<T>,
     options?: { base?: Partial<T> },
   ): PluginSettingsScope<T>
+  configure?(presentation: { auto?: boolean }, owner?: Context['fiber']): () => void
 }
 
 function normalizedConfig(config: Config): Config {
   return { ...config, apiKeyEnv: config.apiKeyEnv?.trim() || DEFAULT_API_KEY_REF }
+}
+
+export function resolvePluginConfig(config: Config): Config {
+  return Object.fromEntries(Object.entries(config as Record<string, unknown>).map(([key, value]) => [
+    key,
+    typeof value === 'object' && value !== null && 'get' in value && typeof value.get === 'function'
+      ? value.get()
+      : value,
+  ])) as Config
 }
 
 function startRuntime(
@@ -133,17 +151,18 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
   const apiKeys = new ApiKeyManager(credentials)
   const releases = new EngineReleaseManager()
   const downloads = new ModelDownloadManager()
-  if (config.mode !== 'connect' && !config.executable?.trim()) {
+  const initialConfig = resolvePluginConfig(config)
+  if (initialConfig.mode !== 'connect' && !initialConfig.executable?.trim()) {
     void releases.bootstrapLatest().then((result) => {
       if (result.started) ctx.logger.info('First MoE4All setup: downloading the latest official engine release.')
     }).catch((error: unknown) => {
       ctx.logger.error(error instanceof Error ? error : new Error(String(error)))
     })
   }
-  let source = (): Config => config
-  let active: ActiveRuntime | undefined = startRuntime(ctx, settings, config, apiKeys)
-  let activeSignature = configSignature(config)
-  let activeConfig = config
+  let source = (): Config => initialConfig
+  let active: ActiveRuntime | undefined = startRuntime(ctx, settings, initialConfig, apiKeys)
+  let activeSignature = configSignature(initialConfig)
+  let activeConfig = initialConfig
   let transition = Promise.resolve()
   let restartTimer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
@@ -182,10 +201,21 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
     }, 250)
   }
 
-  const settingsScope = settings.register(SETTINGS_NAMESPACE, Config, { base: config })
-  source = () => settingsScope.get()
-  const stopSettingsWatch = settingsScope.watch(scheduleRestart)
-  scheduleRestart()
+  let stopSettingsWatch = () => {}
+  if (settings.register !== undefined) {
+    const settingsScope = settings.register(SETTINGS_NAMESPACE, Config, { base: initialConfig })
+    source = () => settingsScope.get()
+    stopSettingsWatch = settingsScope.watch(scheduleRestart)
+    scheduleRestart()
+  } else if (settings.configure !== undefined) {
+    source = () => resolvePluginConfig(config)
+    ctx.effect(
+      () => settings.configure?.({ auto: false }, ctx.fiber),
+      'moe4all-engine: custom settings page',
+    )
+    const on = ctx.on as unknown as (name: string, callback: () => void) => void
+    on.call(ctx, 'loader/volatile-update', scheduleRestart)
+  }
 
   ctx.inject(['webServer'], (routeCtx: Context) => {
     const webServer = (routeCtx as Context & { webServer: WebServer }).webServer

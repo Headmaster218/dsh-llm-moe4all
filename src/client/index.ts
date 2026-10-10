@@ -17,7 +17,7 @@ import {
 } from './settings-store.js'
 import { styles } from './styles.js'
 
-export const inject = ['slots', 'locale', 'workspaces']
+export const inject = ['slots', 'locale']
 const SETTINGS_NAMESPACE = 'moe4all-engine'
 
 type SettingsClientContext = ClientContext & SettingsStoreContext
@@ -29,7 +29,10 @@ function changedFields(current: Config, next: Config): Array<keyof Config> {
 }
 
 function registerSurfaces(ctx: ClientContext, scope: SettingsStore<Config>): void {
-  const pickDirectory = () => ctx.workspaces.pickDirectory()
+  const pickDirectory = () => {
+    const workspaces = ctx.get('workspaces')
+    return workspaces?.pickDirectory() ?? Promise.resolve(null)
+  }
   const save = async (next: Config): Promise<void> => {
     const current = scope.getSnapshot().value
     if (current === undefined) return
@@ -100,6 +103,8 @@ export function apply(ctx: ClientContext): void {
     scoped.effect(() => () => { mounted = false }, 'moe4all-engine: settings client adapter')
     registerSurfaces(scoped, scope)
   }
+  const available = settingsStoreForContext<Config>(dynamic, SETTINGS_NAMESPACE)
+  if (available !== undefined) mount(dynamic, available)
   dynamic.inject(['configForms'], scoped => {
     const compatible = scoped as SettingsClientContext
     const scope = settingsStoreForContext<Config>(compatible, SETTINGS_NAMESPACE)

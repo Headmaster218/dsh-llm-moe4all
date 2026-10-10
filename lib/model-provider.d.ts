@@ -14,7 +14,11 @@ export interface DiscoveredModel {
     name: string;
 }
 export interface ProviderSettingsLike {
-    get(namespace: SettingsNamespace): unknown;
+    get?(namespace: SettingsNamespace): unknown;
+    describe?(): readonly {
+        ns: SettingsNamespace;
+        value: unknown;
+    }[];
     mutate(namespace: SettingsNamespace, operations: readonly SettingsPathOp[]): Promise<void>;
 }
 interface ProviderModelProfile {

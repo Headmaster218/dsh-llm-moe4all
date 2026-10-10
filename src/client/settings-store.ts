@@ -24,6 +24,7 @@ export interface ConfigFormsProvider {
 }
 
 export interface SettingsStoreContext {
+  get?(name: string): unknown
   settingsScope?: LegacySettingsBinder
   configForms?: ConfigFormsProvider
 }
@@ -32,6 +33,12 @@ export function settingsStoreForContext<T>(
   context: SettingsStoreContext,
   namespace: string,
 ): SettingsStore<T> | undefined {
-  return context.configForms?.get<T>(namespace)
-    ?? context.settingsScope?.bind<T>({ namespace })
+  const configForms = context.get === undefined
+    ? context.configForms
+    : context.get('configForms') as ConfigFormsProvider | undefined
+  const settingsScope = context.get === undefined
+    ? context.settingsScope
+    : context.get('settingsScope') as LegacySettingsBinder | undefined
+  return configForms?.get<T>(namespace)
+    ?? settingsScope?.bind<T>({ namespace })
 }

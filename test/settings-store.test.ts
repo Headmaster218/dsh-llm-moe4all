@@ -58,3 +58,18 @@ test('legacy DSH settings scope remains the fallback', () => {
 
   assert.equal(selected, legacy)
 })
+
+test('Cordis service lookup avoids reading an unavailable compatibility property', () => {
+  const legacy = store('legacy')
+  const context = {
+    get(name: string) {
+      if (name === 'settingsScope') return { bind: () => legacy }
+      return undefined
+    },
+    get configForms(): never {
+      throw new Error('cannot get property "configForms" without inject')
+    },
+  }
+
+  assert.equal(settingsStoreForContext(context, 'moe4all-engine'), legacy)
+})

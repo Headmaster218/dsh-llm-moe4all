@@ -71,3 +71,30 @@ jobs:
             }
           }
       - run: npm run check
+      - name: Verify official plugin-manager installation
+        if: matrix.dsh-version == '0.2.0-rc.2'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'dsh-plugin-install-smoke'
+          $runtime = Join-Path $root 'runtime'
+          $dshHome = Join-Path $root 'home'
+          New-Item -ItemType Directory -Path $runtime, $dshHome -Force | Out-Null
+
+          & npm install --prefix $runtime --no-audit --no-fund '@deepseek-ai/dsh@0.2.0-rc.2'
+          if ($LASTEXITCODE -ne 0) { throw 'Installing the official DSH runtime failed' }
+
+          $archive = (& npm pack --ignore-scripts --json | ConvertFrom-Json).filename
+          if ($LASTEXITCODE -ne 0) { throw 'Packing the plugin failed' }
+          $archive = (Resolve-Path -LiteralPath $archive).Path
+          $entry = Join-Path $runtime 'node_modules\@deepseek-ai\dsh\lib\bin.js'
+          $env:DSH_HOME = $dshHome
+
+          & node $entry --profile web --dump-config | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Initializing the official DSH web profile failed' }
+          & node $entry plugin --profile web add $archive
+          if ($LASTEXITCODE -ne 0) { throw 'The official DSH plugin manager rejected the plugin' }
+          & node $entry --profile web --dump-config | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'The installed plugin failed DSH config composition' }
+          & node scripts/smoke-official-dsh.mjs $entry $dshHome
+          if ($LASTEXITCODE -ne 0) { throw 'The installed plugin failed the official DSH runtime smoke test' }

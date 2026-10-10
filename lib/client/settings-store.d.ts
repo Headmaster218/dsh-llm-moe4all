@@ -22,6 +22,7 @@ export interface ConfigFormsProvider {
     get<T>(entryId: string): SettingsStore<T>;
 }
 export interface SettingsStoreContext {
+    get?(name: string): unknown;
     settingsScope?: LegacySettingsBinder;
     configForms?: ConfigFormsProvider;
 }

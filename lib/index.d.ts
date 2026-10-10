@@ -75,6 +75,7 @@ export declare const Config: z<Schemastery.ObjectS<NoInfer<{
     modelDiscoveryTimeoutMs: z<number, number, "defined">;
     statusDisplay: z<"hover" | "always" | "hidden", "hover" | "always" | "hidden", "defined">;
 }>>, "plain">;
+export declare function resolvePluginConfig(config: Config): Config;
 export declare function apply(ctx: Context, config: Config): () => Promise<void>;
 declare const plugin: {
     name: string;

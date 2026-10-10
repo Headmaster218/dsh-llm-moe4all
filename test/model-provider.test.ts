@@ -60,6 +60,14 @@ class FakeSettings {
   }
 }
 
+class DescribedSettings extends FakeSettings {
+  override get = undefined
+
+  describe(): Array<{ ns: string, value: unknown }> {
+    return Object.entries(this.values).map(([ns, value]) => ({ ns, value }))
+  }
+}
+
 async function modelServer(): Promise<{ endpoint: URL, close(): Promise<void> }> {
   const server = createServer((request, response) => {
     if (request.url === '/v1/models') {
@@ -123,6 +131,20 @@ test('provider bridge persists the live endpoint and activates the discovered mo
     model: 'Qwen3.8-Flash',
     reasoningEffort: 'medium',
   })
+
+  await bridge.dispose()
+  await server.close()
+})
+
+test('provider bridge reads settings from the DSH 0.2 descriptor API', async () => {
+  const server = await modelServer()
+  const settings = new DescribedSettings()
+  const bridge = new ModelProviderBridge(settings, server.endpoint, {}, quietLogger)
+
+  await bridge.refreshNow()
+  await bridge.activateDefaultModel()
+  assert.equal(record(record(settings.values['llm-pi-ai']!.providers).moe4all).baseURL, server.endpoint.href.replace(/\/$/u, ''))
+  assert.equal(settings.values['agent-default-model']!.provider, 'moe4all')
 
   await bridge.dispose()
   await server.close()

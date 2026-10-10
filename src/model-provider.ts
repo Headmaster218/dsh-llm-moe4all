@@ -20,7 +20,8 @@ export interface DiscoveredModel {
 }
 
 export interface ProviderSettingsLike {
-  get(namespace: SettingsNamespace): unknown
+  get?(namespace: SettingsNamespace): unknown
+  describe?(): readonly { ns: SettingsNamespace, value: unknown }[]
   mutate(
     namespace: SettingsNamespace,
     operations: readonly SettingsPathOp[],
@@ -62,6 +63,11 @@ const DEFAULTS = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function settingsValue(settings: ProviderSettingsLike, namespace: SettingsNamespace): unknown {
+  if (settings.get !== undefined) return settings.get(namespace)
+  return settings.describe?.().find(descriptor => descriptor.ns === namespace)?.value
 }
 
 function authorizationHeader(apiKeyEnv: string, apiKey?: string): Record<string, string> {
@@ -216,7 +222,7 @@ export class ModelProviderBridge {
   private async syncOnce(): Promise<void> {
     if (!this.enabled()) return
     try {
-      const current = this.settings.get(PI_AI_NAMESPACE)
+      const current = settingsValue(this.settings, PI_AI_NAMESPACE)
       if (!isRecord(current)) throw new Error('llm-pi-ai settings are not active yet')
       const models = await discoverModels(
         this.endpoint,
@@ -253,7 +259,7 @@ export class ModelProviderBridge {
     await this.refreshNow()
     const model = this.discovered[0]
     if (model === undefined) throw new Error('MoE4All has no discovered chat model to activate')
-    const current = this.settings.get(DEFAULT_MODEL_NAMESPACE)
+    const current = settingsValue(this.settings, DEFAULT_MODEL_NAMESPACE)
     if (!isRecord(current)) throw new Error('agent-default-model settings are not active yet')
     const operations: SettingsPathOp[] = [
       { op: 'set', path: ['provider'], value: 'moe4all' },
