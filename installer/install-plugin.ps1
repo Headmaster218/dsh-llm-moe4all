@@ -164,6 +164,36 @@ function New-CustomTarget {
     }
 }
 
+function Select-CustomDshTarget {
+    param(
+        [object[]]$Targets,
+        [string]$HomePath,
+        [string]$ProfileName
+    )
+
+    $resolvedHome = [IO.Path]::GetFullPath($HomePath.Trim().Trim('"'))
+    foreach ($target in $Targets) {
+        if ([string]::Equals([IO.Path]::GetFullPath($target.Home), $resolvedHome, [StringComparison]::OrdinalIgnoreCase)) {
+            return $target
+        }
+    }
+    if ($Targets.Count -eq 1) { return New-CustomTarget $Targets[0] $resolvedHome $ProfileName }
+
+    Write-Host ''
+    Write-Host 'Select the DSH launcher for this custom home:' -ForegroundColor Cyan
+    for ($i = 0; $i -lt $Targets.Count; $i++) {
+        Write-Host ("  [{0}] {1}: {2}" -f ($i + 1), $Targets[$i].Label, $Targets[$i].Detail)
+    }
+    while ($true) {
+        $choice = (Read-Host 'Launcher').Trim()
+        $number = 0
+        if ([int]::TryParse($choice, [ref]$number) -and $number -ge 1 -and $number -le $Targets.Count) {
+            return New-CustomTarget $Targets[$number - 1] $resolvedHome $ProfileName
+        }
+        Write-Host 'Choose one listed launcher number.' -ForegroundColor Yellow
+    }
+}
+
 function Select-DshTarget {
     param(
         [object[]]$Targets,
@@ -175,7 +205,7 @@ function Select-DshTarget {
         throw 'No DSH launcher was found. Install DSH Desktop or put the dsh command on PATH, then run this installer again.'
     }
     if (-not [string]::IsNullOrWhiteSpace($RequestedHome)) {
-        return New-CustomTarget $Targets[0] $RequestedHome $ProfileName
+        return Select-CustomDshTarget $Targets $RequestedHome $ProfileName
     }
 
     Write-Host ''
@@ -197,7 +227,7 @@ function Select-DshTarget {
                 Write-Host 'DSH_HOME cannot be empty.' -ForegroundColor Yellow
                 continue
             }
-            return New-CustomTarget $Targets[0] $customHome $ProfileName
+            return Select-CustomDshTarget $Targets $customHome $ProfileName
         }
         $number = 0
         if ([int]::TryParse($choice, [ref]$number) -and $number -ge 1 -and $number -le $Targets.Count) {

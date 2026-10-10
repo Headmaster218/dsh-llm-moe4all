@@ -55,4 +55,24 @@ if ($exitCode -is [array] -or $exitCode -ne 7) {
     throw "The DSH command wrapper did not return exactly the native exit code: $exitCode"
 }
 
+$firstHome = Join-Path $Root 'desktop-home'
+$secondHome = Join-Path $Root 'source-home'
+$targets = @(
+    [pscustomobject]@{ Home = $firstHome; Runner = 'desktop-runner'; Cli = 'desktop-cli'; Bin = $null; Label = 'Desktop'; Detail = 'Desktop launcher'; ProcessIds = @(10) },
+    [pscustomobject]@{ Home = $secondHome; Runner = 'source-runner'; Cli = 'source-cli'; Bin = $null; Label = 'Source'; Detail = 'Source launcher'; ProcessIds = @(20) }
+)
+$selected = Select-DshTarget $targets $secondHome 'web'
+if ($selected.Runner -ne 'source-runner' -or $selected.ProcessIds[0] -ne 20) {
+    throw 'An explicitly selected known home used the wrong launcher.'
+}
+$customHome = Join-Path $Root 'custom-home'
+$customProfile = Join-Path $customHome 'profiles\web'
+New-Item -ItemType Directory -Path $customProfile -Force | Out-Null
+[IO.File]::WriteAllText((Join-Path $customProfile 'package.json'), '{}')
+$selected = Select-DshTarget $targets $customHome 'web'
+if ($selected.Runner -ne 'source-runner' -or $selected.Home -ne [IO.Path]::GetFullPath($customHome)) {
+    throw 'A custom home ignored the explicitly selected launcher.'
+}
+
 Write-Output 'repair and rollback: OK'
+Write-Output 'target and launcher selection: OK'
