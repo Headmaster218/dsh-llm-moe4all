@@ -18,6 +18,7 @@
 - Include third-party icon license notices and document installation-source-specific upgrades and platform limits.
 - Reject misleading loopback-like domain names and bound stalled plugin-update requests.
 - Support both the legacy DSH settings scope and the DSH 0.2 configuration forms API.
+- Preserve legacy Schema field inference when volatile settings are unavailable and pin the CI plugin-manager pnpm runtime.
 - Open the complete MoE4All setup surface on first use even when DSH restores a non-empty conversation.
 - Limit managed Engine concurrency to one through four slots.
 - Remove obsolete process-name and busy-prompt defaults.
