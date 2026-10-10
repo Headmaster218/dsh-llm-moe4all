@@ -95,7 +95,7 @@ Restart DSH afterward. Removal preserves MoE4All Engine files, downloaded models
 - Verified with DSH `0.1.1-rc.2` (DSH Desktop `0.6.3`), DSH `0.1.5-rc.3`, and the official DSH `0.2.0-rc.2` line.
 - The manifest explicitly admits the known DSH `0.1.1` through `0.1.7` prerelease lines and the `0.2.0` prerelease/stable line.
 - Node.js **20.3.0 or newer** is required by this plugin; DSH may require a newer version. Builds use the pinned Node/npm versions in `.node-version` and `package.json`.
-- CI checks all three verified DSH lines. The official `0.2.0-rc.2` smoke test installs the packaged plugin and verifies browser authentication, plugin control routes, and native-provider model discovery without loading GPU models.
+- CI checks all three verified DSH lines with frozen dependency lockfiles. The `0.1.1-rc.2` and `0.2.0-rc.2` runtime tests install the packaged plugin, verify host access and native-provider model discovery, and exercise plugin self-update, failure rollback, and restart activation without loading GPU models. Node, npm, pnpm, and Actions are pinned; the Windows runner uses the `windows-2025` family.
 - Declared intermediate DSH lines and non-Windows hosts are not additional end-to-end test results.
 
 ## Configuration

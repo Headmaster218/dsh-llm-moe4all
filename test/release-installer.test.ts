@@ -71,6 +71,10 @@ test('release publication waits for reusable compatibility CI and validates asse
   assert.match(ci, /workflow_call:/u)
   assert.match(ci, /git diff --exit-code -- lib/u)
   assert.match(ci, /npm install --global pnpm@11\.7\.0/u)
+  assert.match(ci, /prepare-compat-dependencies\.mjs/u)
+  assert.match(ci, /npm ci --prefix \$runtime/u)
+  assert.match(ci, /runs-on: windows-2025/u)
+  assert.doesNotMatch(ci, /--package-lock=false|windows-latest/u)
 })
 
 test('release scripts parse on Windows PowerShell 5.1 and reject mismatched tags', { skip: process.platform !== 'win32' }, async () => {

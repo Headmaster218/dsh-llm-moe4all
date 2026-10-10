@@ -10,6 +10,7 @@
 - Retain rollback archives and restore the previous package after an installation failure; preserve unrelated profile settings and defer updates while an Engine or agent is active.
 - Require a manual DSH restart after a standalone update and keep plugin updates separate from Engine/model downloads.
 - Exercise real packaged-plugin update and restart flows on legacy DSH and official 0.2.0-rc.2 in CI.
+- Freeze complete compatibility and test-host dependency trees with versioned lockfiles; pin the Windows runner family and bound host installation.
 
 ## 0.2.0
 

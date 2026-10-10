@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: windows-latest
+    runs-on: windows-2025
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -32,28 +32,20 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            test/fixtures/**/package-lock.json
       - name: Use pinned npm
         run: npm install --global npm@10.9.2
-      - run: npm ci
-      - name: Install DSH compatibility line
+      - name: Prepare frozen DSH compatibility dependencies
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          & node scripts/prepare-compat-dependencies.mjs '${{ matrix.dsh-version }}'
+          if ($LASTEXITCODE -ne 0) { throw 'Preparing the compatibility lockfile failed' }
+          & npm ci --legacy-peer-deps --fetch-retries=1 --fetch-timeout=30000
+          if ($LASTEXITCODE -ne 0) { throw 'Installing frozen compatibility dependencies failed' }
           $dshVersion = '${{ matrix.dsh-version }}'
-          $dshPackages = @(
-            '@deepseek-ai/cordis@${{ matrix.cordis-version }}'
-            '@deepseek-ai/schemastery@${{ matrix.schemastery-version }}'
-            "@deepseek-ai/dsh-client-locale@$dshVersion"
-            '@deepseek-ai/dsh-client-runtime@0.1.1-rc.2'
-            "@deepseek-ai/dsh-client-ui-settings@$dshVersion"
-            "@deepseek-ai/dsh-client-ui-slots@$dshVersion"
-            "@deepseek-ai/dsh-credentials@$dshVersion"
-            "@deepseek-ai/dsh-host-webserver@$dshVersion"
-            "@deepseek-ai/dsh-llm-pi-ai@$dshVersion"
-            "@deepseek-ai/dsh-settings@$dshVersion"
-          )
-          & npm install --no-save --package-lock=false --legacy-peer-deps @dshPackages
-          if ($LASTEXITCODE -ne 0) { throw "DSH $dshVersion compatibility install failed" }
           $expectedVersions = @{
             'cordis' = '${{ matrix.cordis-version }}'
             'schemastery' = '${{ matrix.schemastery-version }}'
@@ -79,6 +71,7 @@ jobs:
         run: git diff --exit-code -- lib
       - name: Verify official plugin-manager installation
         if: matrix.dsh-version == '0.1.1-rc.2' || matrix.dsh-version == '0.2.0-rc.2'
+        timeout-minutes: 10
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -89,7 +82,9 @@ jobs:
           $dshHome = Join-Path $root 'home'
           New-Item -ItemType Directory -Path $runtime, $dshHome -Force | Out-Null
 
-          & npm install --prefix $runtime --no-audit --no-fund '@deepseek-ai/dsh@${{ matrix.dsh-version }}'
+          & node scripts/prepare-smoke-dsh.mjs $runtime '${{ matrix.dsh-version }}' '${{ matrix.cordis-version }}' '${{ matrix.schemastery-version }}'
+          if ($LASTEXITCODE -ne 0) { throw 'Pinning the official DSH runtime failed' }
+          & npm ci --prefix $runtime --no-audit --no-fund --fetch-retries=1 --fetch-timeout=30000
           if ($LASTEXITCODE -ne 0) { throw 'Installing the official DSH runtime failed' }
 
           $archive = (& npm pack --ignore-scripts --json | ConvertFrom-Json).filename

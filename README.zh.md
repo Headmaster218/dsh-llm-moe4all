@@ -95,7 +95,7 @@ dsh plugin --profile web remove dsh-llm-moe4all
 - 已验证 DSH `0.1.1-rc.2`（DSH Desktop `0.6.3`）、DSH `0.1.5-rc.3` 和新官方 DSH `0.2.0-rc.2` 版本线。
 - manifest 显式允许已知的 DSH `0.1.1` 到 `0.1.7` 预发布版本线，以及 `0.2.0` 预发布/正式版本线。
 - 本插件需要 **Node.js 20.3.0 或更高版本**；DSH 自身可能要求更高版本。构建使用 `.node-version` 和 `package.json` 中固定的 Node/npm。
-- CI 检查上述三条已验证版本线；官方 `0.2.0-rc.2` 测试实际安装打包后的插件，检查浏览器鉴权、插件控制路由和原生 Provider 模型发现，不载入 GPU 模型。
+- CI 使用完整依赖 lockfile 检查上述三条版本线。`0.1.1-rc.2` 与 `0.2.0-rc.2` 运行时测试实际安装打包插件，检查宿主访问、原生 Provider 模型发现，并验证插件自更新、失败回滚和重启加载，不载入 GPU 模型。Node、npm、pnpm 与 Actions 均固定版本；Windows runner 固定为 `windows-2025` 版本线。
 - manifest 允许的其他中间版本以及非 Windows 系统，不等于已经做过额外的端到端验证。
 
 ## 配置
