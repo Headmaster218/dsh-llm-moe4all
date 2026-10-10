@@ -27,8 +27,9 @@ interface OptionalVolatileSchema {
   volatile?(): unknown
 }
 
-function editable<TSchema extends OptionalVolatileSchema>(schema: TSchema): TSchema {
-  return (typeof schema.volatile === 'function' ? schema.volatile() : schema) as TSchema
+function editable<TSchema extends object>(schema: TSchema): TSchema {
+  const optional = schema as TSchema & OptionalVolatileSchema
+  return (typeof optional.volatile === 'function' ? optional.volatile() : schema) as TSchema
 }
 
 export const Config = z.object({
@@ -209,8 +210,9 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
     scheduleRestart()
   } else if (settings.configure !== undefined) {
     source = () => resolvePluginConfig(config)
+    const configure = settings.configure.bind(settings)
     ctx.effect(
-      () => settings.configure?.({ auto: false }, ctx.fiber),
+      () => configure({ auto: false }, ctx.fiber),
       'moe4all-engine: custom settings page',
     )
     const on = ctx.on as unknown as (name: string, callback: () => void) => void
