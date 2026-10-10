@@ -22,3 +22,16 @@ export interface LegacySettingsBinder {
 export interface ConfigFormsProvider {
   get<T>(entryId: string): SettingsStore<T>
 }
+
+export interface SettingsStoreContext {
+  settingsScope?: LegacySettingsBinder
+  configForms?: ConfigFormsProvider
+}
+
+export function settingsStoreForContext<T>(
+  context: SettingsStoreContext,
+  namespace: string,
+): SettingsStore<T> | undefined {
+  return context.configForms?.get<T>(namespace)
+    ?? context.settingsScope?.bind<T>({ namespace })
+}

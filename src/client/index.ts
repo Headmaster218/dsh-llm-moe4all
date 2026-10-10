@@ -10,16 +10,17 @@ import { Moe4AllSettings, type Moe4AllSettingsInjected } from './Moe4AllSettings
 import { PluginUpdateNotice } from './PluginUpdateNotice.js'
 import { RuntimeStatusDock } from './RuntimeStatus.js'
 import { en, zh } from './locales.js'
-import type { ConfigFormsProvider, LegacySettingsBinder, SettingsStore } from './settings-store.js'
+import {
+  settingsStoreForContext,
+  type SettingsStore,
+  type SettingsStoreContext,
+} from './settings-store.js'
 import { styles } from './styles.js'
 
 export const inject = ['slots', 'locale', 'workspaces']
 const SETTINGS_NAMESPACE = 'moe4all-engine'
 
-type SettingsClientContext = ClientContext & {
-  settingsScope?: LegacySettingsBinder
-  configForms?: ConfigFormsProvider
-}
+type SettingsClientContext = ClientContext & SettingsStoreContext
 
 function changedFields(current: Config, next: Config): Array<keyof Config> {
   return (Object.keys(next) as Array<keyof Config>).filter(field => (
@@ -101,13 +102,13 @@ export function apply(ctx: ClientContext): void {
   }
   dynamic.inject(['configForms'], scoped => {
     const compatible = scoped as SettingsClientContext
-    const forms = compatible.configForms
-    if (forms) mount(compatible, forms.get<Config>(SETTINGS_NAMESPACE))
+    const scope = settingsStoreForContext<Config>(compatible, SETTINGS_NAMESPACE)
+    if (scope) mount(compatible, scope)
   })
   dynamic.inject(['settingsScope'], scoped => {
     const compatible = scoped as SettingsClientContext
-    const binder = compatible.settingsScope
-    if (binder) mount(compatible, binder.bind<Config>({ namespace: SETTINGS_NAMESPACE }))
+    const scope = settingsStoreForContext<Config>(compatible, SETTINGS_NAMESPACE)
+    if (scope) mount(compatible, scope)
   })
 }
 

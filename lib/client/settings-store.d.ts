@@ -21,4 +21,9 @@ export interface LegacySettingsBinder {
 export interface ConfigFormsProvider {
     get<T>(entryId: string): SettingsStore<T>;
 }
+export interface SettingsStoreContext {
+    settingsScope?: LegacySettingsBinder;
+    configForms?: ConfigFormsProvider;
+}
+export declare function settingsStoreForContext<T>(context: SettingsStoreContext, namespace: string): SettingsStore<T> | undefined;
 //# sourceMappingURL=settings-store.d.ts.map

@@ -51,4 +51,23 @@ jobs:
           )
           & npm install --no-save --package-lock=false --legacy-peer-deps @dshPackages
           if ($LASTEXITCODE -ne 0) { throw "DSH $dshVersion compatibility install failed" }
+          $expectedVersions = @{
+            'cordis' = '${{ matrix.cordis-version }}'
+            'schemastery' = '${{ matrix.schemastery-version }}'
+            'dsh-client-locale' = $dshVersion
+            'dsh-client-runtime' = '0.1.1-rc.2'
+            'dsh-client-ui-settings' = $dshVersion
+            'dsh-client-ui-slots' = $dshVersion
+            'dsh-credentials' = $dshVersion
+            'dsh-host-webserver' = $dshVersion
+            'dsh-llm-pi-ai' = $dshVersion
+            'dsh-settings' = $dshVersion
+          }
+          foreach ($entry in $expectedVersions.GetEnumerator()) {
+            $manifestPath = Join-Path 'node_modules\@deepseek-ai' "$($entry.Key)\package.json"
+            $actualVersion = (Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json).version
+            if ($actualVersion -ne $entry.Value) {
+              throw "Expected @deepseek-ai/$($entry.Key) $($entry.Value), found $actualVersion"
+            }
+          }
       - run: npm run check
