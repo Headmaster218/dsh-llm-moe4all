@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
-import { compatibilityManifest } from '../scripts/prepare-compat-dependencies.mjs'
+import { compatibilityLock, compatibilityManifest } from '../scripts/prepare-compat-dependencies.mjs'
 import { pinnedHostManifest } from '../scripts/prepare-smoke-dsh.mjs'
 
 test('smoke runtime pins transitive DSH components and shared client runtime', async () => {
@@ -31,6 +31,24 @@ test('compatibility dependency selection preserves current release metadata', ()
   const fixture = { ...current, version: '0.2.1', devDependencies: { typescript: '5.9.3', '@deepseek-ai/dsh-settings': '0.1.1-rc.2' } }
   assert.equal(compatibilityManifest(current, fixture).version, current.version)
   assert.throws(() => compatibilityManifest({ ...current, dependencies: { tar: '8.0.0' } }, fixture), /Refresh the compatibility lockfiles/u)
+})
+
+test('compatibility lock selection updates only the plugin release metadata', () => {
+  const manifest = { name: 'dsh-llm-moe4all', version: '0.2.2', dependencies: { tar: '7.5.22' }, devDependencies: { typescript: '5.9.3' } }
+  const fixture = {
+    name: manifest.name, version: '0.2.1', lockfileVersion: 3,
+    packages: {
+      '': { ...manifest, version: '0.2.1' },
+      'node_modules/tar': { version: '7.5.22', resolved: 'https://registry.npmjs.org/tar/-/tar-7.5.22.tgz', integrity: 'sha512-fixture' },
+    },
+  }
+  const before = JSON.stringify(fixture)
+  const lock = compatibilityLock(manifest, fixture)
+  assert.equal(lock.version, manifest.version)
+  assert.equal(lock.packages[''].version, manifest.version)
+  assert.deepEqual(lock.packages['node_modules/tar'], fixture.packages['node_modules/tar'])
+  assert.equal(JSON.stringify(fixture), before, 'The frozen snapshot must remain unchanged')
+  assert.throws(() => compatibilityLock({ ...manifest, dependencies: { tar: '8.0.0' } }, fixture))
 })
 
 test('all compatibility lock snapshots contain only registry packages with integrity hashes', async () => {

@@ -9,4 +9,4 @@ To update a compatibility line, generate its manifest from the current plugin ma
 
 To update an official host, use `pinnedHostManifest` from `scripts/prepare-smoke-dsh.mjs` with the target DSH/Cordis/Schemastery versions and npm registry manifests. Install that manifest with the pinned npm version to generate the full lockfile, then verify installation, rollback, and restart before replacing its snapshot. The shared `dsh-client-runtime` remains at `0.1.1-rc.2` on the currently tested host lines.
 
-An ordinary plugin version bump does not require regenerating dependency locks. The CI preparation script preserves the current release metadata while applying the selected dependency snapshot.
+An ordinary plugin version bump does not require regenerating dependency locks. The CI preparation script preserves the current release metadata while applying the selected dependency snapshot, updating only the lockfile's top-level and root-package plugin versions. All resolved dependency versions, URLs, and integrity hashes remain frozen.

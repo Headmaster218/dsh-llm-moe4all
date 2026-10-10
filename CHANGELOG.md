@@ -7,6 +7,7 @@
 - Make Windows installer prompts, DSH selection, installation results, errors, and bundled instructions bilingual in Chinese and English.
 - Use UTF-8 console output and a BOM-encoded PowerShell installer so Chinese guidance remains readable on Windows PowerShell 5.1.
 - Preserve the existing installation, profile rollback, and plugin self-update behavior.
+- Keep frozen compatibility lockfile root versions aligned with the current plugin release without changing pinned dependencies.
 
 ## 0.2.1
 
