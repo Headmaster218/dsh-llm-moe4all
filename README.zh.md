@@ -6,6 +6,14 @@
 
 English documentation: [README.md](README.md)
 
+## 界面预览
+
+同一个 MoE4All 页面内即可查看引擎状态和槽位实时速度，并完成模型选择、自动策略、可选能力与高级参数配置。
+
+![MoE4All 运行状态](https://raw.githubusercontent.com/Headmaster218/dsh-llm-moe4all/main/docs/screenshots/runtime-status.png)
+
+<img src="https://raw.githubusercontent.com/Headmaster218/dsh-llm-moe4all/main/docs/screenshots/model-settings.png" alt="MoE4All 模型与运行参数设置" width="640">
+
 ## 安装
 
 ### 收录 DSH 插件市场前：Windows 一键安装
@@ -13,7 +21,7 @@ English documentation: [README.md](README.md)
 1. 打开 [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases)，从最上方的新版本中下载 `dsh-llm-moe4all-windows.zip`。
 2. 解压并双击 `Install-MoE4All-Plugin.cmd`。
 3. 选择目标 DSH；看到提示后再完成当前任务、彻底退出所选 DSH，然后按回车继续。
-4. 重新启动所选 DSH，进入 **设置 > MoE4All**。
+4. 重新启动所选 DSH。插件在首次尚未完成配置时会自动弹出 MoE4All 设置；若主动关闭，可再进入 **设置 > MoE4All**。
 
 安装器会列出能识别到的 DSH 数据目录，并要求用户明确选择。它支持常规 DSH Desktop、正在运行的源码版 DSH，也支持手动输入 `DSH_HOME`。随后，安装器会把压缩包内已经预编译好的插件保存到所选 DSH 的数据目录，再加入 `web` profile。它不会在安装时拉取 GitHub 源码或执行构建，也不需要管理员权限。
 
@@ -41,7 +49,7 @@ powershell.exe -NoLogo -NoProfile -File .\install-plugin.ps1
 
 ## 最快开始使用
 
-1. 打开 **设置 > MoE4All**。第一次使用时，插件会显示进度并下载最新兼容 Engine，失败时可以重试。
+1. 按要求重启 DSH 后，MoE4All 设置会自动弹出。第一次使用时，插件会显示进度并下载最新兼容 Engine，失败时可以重试；若主动关闭，可再进入 **设置 > MoE4All**。
 2. 选择已有 GGUF 模型，或下载推荐模型。
 3. 不确定参数时保留“自动配置：保守”。
 4. 点击 **运行**。插件会写入 Provider 配置，在允许时启动 Engine，并把探测到的模型同步给 DSH。
@@ -77,8 +85,8 @@ dsh plugin --profile web remove dsh-llm-moe4all
 
 ## 兼容性
 
-- 已验证 DSH `0.1.1-rc.2`（DSH Desktop `0.6.3`）和 DSH `0.1.5-rc.3`。
-- manifest 显式允许已知的 DSH `0.1.1` 到 `0.1.7` 预发布版本线。
+- 已验证 DSH `0.1.1-rc.2`（DSH Desktop `0.6.3`）、DSH `0.1.5-rc.3` 和新官方 DSH `0.2.0-rc.2` 版本线。
+- manifest 显式允许已知的 DSH `0.1.1` 到 `0.1.7` 预发布版本线，以及 `0.2.0` 预发布/正式版本线。
 - 独立安装的 DSH 需要 Node.js 20 或更高版本。
 - 每次 push 和 PR 都会执行构建、测试和 npm dry-pack。
 
@@ -110,7 +118,8 @@ dsh plugin --profile web remove dsh-llm-moe4all
 
 - 读取和写入自身的 DSH 设置及 Provider 配置；
 - 检查本机 RAM、VRAM、进程状态、Engine 版本和用户选择的模型目录；
-- 从界面明确展示的地址下载用户选择的 Engine 或模型；
+- 首次配置时自动下载最新兼容 Engine，并显示进度、重试和手动下载入口；
+- 仅在用户从界面选择后下载推荐模型；
 - 使用 `shell: false` 直接启动 `infr.exe`，监控它，并且只停止由插件自己启动的进程；
 - 访问配置的 OpenAI 兼容地址，并在明确下载或检查更新时访问 GitHub Releases 和 DSH Market。
 
@@ -121,7 +130,7 @@ dsh plugin --profile web remove dsh-llm-moe4all
 - **安装后找不到插件：** 完整重启 DSH profile，并在 **Plugins/插件** 中确认 `dsh-llm-moe4all` 已启用。
 - **安装脚本找不到 DSH：** 安装 DSH Desktop，或把 `dsh` 加入 `PATH`，再重试。失败时脚本会显示手动命令。
 - **一直没有更新提示：** 安装或更新 `dshmarket`；没有公开更新 API 时使用上面的手动更新命令。
-- **Engine 启动失败：** 打开 **设置 > MoE4All > 诊断** 查看启动输出。检测到已有 MoE4All 进程或 RAM/VRAM 空闲不足时，插件会有意停止自动启动并等待确认。
+- **Engine 启动失败：** 打开 **设置 > MoE4All > 诊断** 查看启动输出。配置端口被占用或 RAM/VRAM 空闲不足时，需要确认继续或改用其他端口；插件不会因为其他无关的本地推理进程而阻止启动。
 - **需要回滚：** 优先使用 DSH Market 提供的回滚按钮；也可以手动安装已知版本或 tag 后重启 profile。
 
 报告问题时请提供插件版本、DSH 版本、操作系统和相关诊断行。提交前删除 API key、私有路径、提示词和其他个人数据。

@@ -6,6 +6,14 @@ Chat, tools, images, reasoning blocks, retries, and replay stay on DSH's own `@d
 
 Chinese documentation: [README.zh.md](README.zh.md)
 
+## Interface
+
+The same MoE4All page covers Engine status, live slot speed, model selection, automatic profiles, optional capabilities, and advanced settings.
+
+![MoE4All runtime status](https://raw.githubusercontent.com/Headmaster218/dsh-llm-moe4all/main/docs/screenshots/runtime-status.png)
+
+<img src="https://raw.githubusercontent.com/Headmaster218/dsh-llm-moe4all/main/docs/screenshots/model-settings.png" alt="MoE4All model and runtime settings" width="640">
+
 ## Install
 
 ### Before the DSH catalog listing: one-click Windows install
@@ -13,7 +21,7 @@ Chinese documentation: [README.zh.md](README.zh.md)
 1. Open [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) and download `dsh-llm-moe4all-windows.zip` from the newest release.
 2. Extract the ZIP and double-click `Install-MoE4All-Plugin.cmd`.
 3. Select the target DSH. When prompted, finish active work, fully exit that DSH instance, and press Enter.
-4. Restart the selected DSH and open **Settings > MoE4All**.
+4. Restart the selected DSH. On its first unconfigured start, the plugin opens the MoE4All setup automatically. If it was dismissed, open **Settings > MoE4All**.
 
 The installer lists the DSH homes it can identify and asks which one to modify. It recognizes normal DSH Desktop installs, running source-built DSH instances, and an explicitly entered `DSH_HOME`. It then stores the bundled prebuilt plugin package under the selected home and adds it to the `web` profile. It does not clone GitHub source, run an install-time build, or require administrator rights.
 
@@ -41,7 +49,7 @@ Before the plugin is listed in DSH Market, install a newer plugin release by dow
 
 ## Quick Start
 
-1. Open **Settings > MoE4All**. On first use the plugin downloads the latest compatible Engine with visible progress and retry controls.
+1. After the required DSH restart, the MoE4All setup opens automatically. On first use the plugin downloads the latest compatible Engine with visible progress and retry controls. If the setup was dismissed, open **Settings > MoE4All**.
 2. Select an existing GGUF model or download one of the recommended model families.
 3. Keep the conservative automatic profile unless you want to tune memory and paging manually.
 4. Click **Run**. The plugin writes the provider configuration, starts the Engine when allowed, and makes discovered models available to DSH.
@@ -77,8 +85,8 @@ Restart DSH afterward. Removal preserves MoE4All Engine files, downloaded models
 
 ## Compatibility
 
-- Verified with DSH `0.1.1-rc.2` (DSH Desktop `0.6.3`) and DSH `0.1.5-rc.3`.
-- The manifest explicitly admits the known DSH `0.1.1` through `0.1.7` prerelease lines.
+- Verified with DSH `0.1.1-rc.2` (DSH Desktop `0.6.3`), DSH `0.1.5-rc.3`, and the official DSH `0.2.0-rc.2` line.
+- The manifest explicitly admits the known DSH `0.1.1` through `0.1.7` prerelease lines and the `0.2.0` prerelease/stable line.
 - Node.js 20 or newer is required for standalone DSH installations.
 - CI builds, tests, and dry-packs the plugin on every push and pull request.
 
@@ -110,7 +118,8 @@ The plugin can:
 
 - read and write its DSH settings and provider rows;
 - inspect local RAM, VRAM, process state, Engine versions, and selected model directories;
-- download user-approved Engine or model files from the URLs shown in the UI;
+- automatically download the latest compatible Engine during first-time setup, with visible progress, retry, and manual download controls;
+- download a recommended model only after the user selects it in the UI;
 - start `infr.exe` directly with `shell: false`, monitor it, and stop only the process it owns;
 - call the configured OpenAI-compatible endpoint, plus GitHub Releases and DSH Market for explicit downloads or update checks.
 
@@ -121,7 +130,7 @@ It does not upload model files, conversation content, or API keys to the plugin 
 - **Plugin does not appear:** fully restart the DSH profile after install and confirm `dsh-llm-moe4all` is enabled under **Plugins**.
 - **Installer cannot find DSH:** install DSH Desktop, or put `dsh` on `PATH`, then rerun the script. The manual command is printed on failure.
 - **Update prompt never appears:** install or update `dshmarket`; without its public update API, use the manual update command above.
-- **Engine does not start:** open **Settings > MoE4All > Diagnostics** and inspect startup output. Existing MoE4All processes and low free RAM/VRAM intentionally require intervention.
+- **Engine does not start:** open **Settings > MoE4All > Diagnostics** and inspect startup output. A busy configured port or low free RAM/VRAM requires confirmation or a different port; unrelated local inference processes are not blocked.
 - **Need to roll back:** use DSH Market's rollback action when offered, or install a known package/tag and restart the profile.
 
 When reporting a bug, include the plugin version, DSH version, operating system, and the relevant diagnostic lines. Remove API keys, private paths, prompts, and other personal data first.
