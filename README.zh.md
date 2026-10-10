@@ -18,7 +18,7 @@ English documentation: [README.md](README.md)
 
 ### 收录 DSH 插件市场前：Windows 一键安装
 
-1. 直接下载 [0.2.0 Windows 一键安装 ZIP](https://github.com/Headmaster218/dsh-llm-moe4all/releases/download/release-0.2.0/dsh-llm-moe4all-windows.zip)，或打开 [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) 查看后续版本。
+1. 直接下载 [0.2.1 Windows 一键安装 ZIP](https://github.com/Headmaster218/dsh-llm-moe4all/releases/download/release-0.2.1/dsh-llm-moe4all-windows.zip)，或打开 [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) 查看后续版本。
 2. 解压并双击 `Install-MoE4All-Plugin.cmd`。
 3. 选择目标 DSH；看到提示后再完成当前任务、彻底退出所选 DSH，然后按回车继续。
 4. 重新启动所选 DSH。插件在首次尚未完成配置时会自动弹出 MoE4All 设置；若主动关闭，可再进入 **设置 > MoE4All**。
@@ -47,7 +47,7 @@ Release ZIP 内含预编译的 `dsh-llm-moe4all.tgz`，双击安装默认就使�
 powershell.exe -NoLogo -NoProfile -File .\install-plugin.ps1
 ```
 
-ZIP 安装的插件通过下载新 Windows 安装包并重新运行来升级；市场管理的安装在公开更新 API 可用时走市场更新流程。
+从 0.2.1 起，ZIP 安装的版本可在插件内检查 GitHub Releases 并更新。已经安装的 0.2.0 需先用新版 Windows 安装包升级一次，才能获得此能力。市场管理的安装继续使用市场公开 API。
 
 ## 最快开始使用
 
@@ -62,12 +62,13 @@ ZIP 安装的插件通过下载新 Windows 安装包并重新运行来升级；�
 
 ## 插件自动更新
 
-安装了带公开更新 API 的 `dshmarket` 后，本插件会在 DSH 打开后自动检查自身更新。发现新版本时，右下角会出现不阻塞操作的提示，并提供进度、失败重试以及正确的刷新或重启按钮。
+插件会在 DSH 打开后及页面保持打开期间每六小时检查自身更新。也可在 **设置 > MoE4All > 诊断 > 检查插件更新** 主动检查。插件更新的下载和安装始终需要用户确认。
 
-- 更新只调用 `/dsh-market/api/v1/*`，插件自身不启动包管理器，也不直接修改 profile。
-- 未安装 DSH Market，或其公开 API 不可用时，检查会静默退出，不影响启动和对话。
-- 这里只更新 `dsh-llm-moe4all`；Engine 版本仍在 **设置 > MoE4All > 引擎** 中单独管理。
-- 有 Agent 正在运行时，DSH Market 可能要求任务结束后再更新，避免运行中替换插件文件。
+- **ZIP／本地 `.tgz` 安装：** 从本仓库最新正式 GitHub Release 检查更新，不追踪 `main` 或预发布标签。显示下载进度、停止、重试和 Release 页面入口；校验 SHA256、包名、版本和预编译入口后，才通过当前 DSH profile 的安装入口安装，并禁用依赖构建脚本。仅调整本插件的依赖来源；安装失败会尝试恢复原 manifest、lockfile 和旧版本。回滚文件保留在 `profiles/<profile>/.moe4all-plugin-updates`。
+- **市场／npm／Git 安装：** 继续通过公开 `/dsh-market/api/v1/*` 更新，不悄悄改成 Release 安装。开发链接和源码目录不自动覆盖；不支持的宿主可用 Windows 安装脚本或原安装方式升级。
+- 在本机环回页面更新，并先停下插件托管的 Engine、结束运行中的 Agent。更新器不会停止外部引擎。
+- 独立更新完成后需要**手动重启 DSH**加载新代码。插件不会自行结束 DSH、重启 Desktop 或停掉引擎。
+- 这里只更新 `dsh-llm-moe4all`，不更换 Engine、模型、KV 缓存、凭据和会话。Engine 仍在 **设置 > MoE4All > 引擎** 单独更新。
 
 npm 安装的插件可用以下命令更新（须先发布 npm 包）：
 
@@ -77,7 +78,7 @@ dsh plugin --profile web update dsh-llm-moe4all
 
 Bundle 更新后需要重启 DSH profile。
 
-ZIP 安装器使用固定版本的本地 `.tgz`，上述命令不会替你下载新的本地压缩包。这种安装方式应下载新 ZIP 并重新运行安装器，选择同一个 DSH 数据目录。仅仅被市场收录，不代表已有的本地文件依赖会自动转成市场管理的依赖。
+ZIP 安装器使用固定版本的本地 `.tgz`，上述命令不会下载新压缩包。请使用内置 Release 更新器（0.2.1 起），或重新运行新版 ZIP 安装器并选择同一个 DSH 数据目录。仅仅被市场收录，不代表本地文件依赖会自动转为市场管理。
 
 ## 禁用和卸载
 
@@ -138,7 +139,7 @@ dsh plugin --profile web remove dsh-llm-moe4all
 
 - **安装后找不到插件：** 完整重启 DSH profile，并在 **Plugins/插件** 中确认 `dsh-llm-moe4all` 已启用。
 - **安装脚本找不到 DSH：** 安装 DSH Desktop，或把 `dsh` 加入 `PATH`，再重试。失败时脚本会显示手动命令。
-- **一直没有更新提示：** 安装或更新 `dshmarket`；没有公开更新 API 时，按上述安装来源对应的方法升级。
+- **一直没有更新提示：** 在 **诊断** 中主动检查。ZIP 自更新需要 0.2.1 及以后版本；0.2.0 需先通过安装器升级一次。市场安装需要 DSH Market 的公开更新 API；网络失败可重试或打开 Release 页面。
 - **Engine 启动失败：** 打开 **设置 > MoE4All > 诊断** 查看启动输出。配置端口被占用或 RAM/VRAM 空闲不足时，需要确认继续或改用其他端口；插件不会因为其他无关的本地推理进程而阻止启动。
 - **需要回滚：** 优先使用 DSH Market 提供的回滚按钮；也可以手动安装已知版本或 tag 后重启 profile。
 

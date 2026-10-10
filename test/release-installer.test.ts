@@ -50,10 +50,12 @@ test('stale Git dependency repair is scoped and byte-restorable', { skip: proces
 test('README install links offer the stable ZIP and a releases fallback', async () => {
   const english = await read('../README.md')
   const chinese = await read('../README.zh.md')
+  const manifest = JSON.parse(await read('../package.json')) as { version: string }
+  const asset = `/releases/download/release-${manifest.version}/dsh-llm-moe4all-windows.zip`
 
   for (const readme of [english, chinese]) {
     assert.match(readme, /https:\/\/github\.com\/Headmaster218\/dsh-llm-moe4all\/releases/u)
-    assert.match(readme, /\/releases\/download\/release-0\.2\.0\/dsh-llm-moe4all-windows\.zip/u)
+    assert.ok(readme.includes(asset), 'README must link to the current package version')
     assert.doesNotMatch(readme, /\/releases\/latest\/download\//u)
   }
 })

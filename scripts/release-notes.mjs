@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { gte } from 'semver'
 
 export function releaseNotes(version, tag, changelog) {
   assert.ok(tag === `release-${version}` || tag === `v${version}`, 'tag must match package version')
@@ -9,6 +10,15 @@ export function releaseNotes(version, tag, changelog) {
   const section = sections.find(value => value.split('\n', 1)[0].trim() === version)
   assert.ok(section?.includes('\n- '), `missing changelog for ${version}`)
   const base = `https://github.com/Headmaster218/dsh-llm-moe4all/releases/download/${tag}`
+  const updates = gte(version, '0.2.1') ? `
+## Plugin updates / 插件更新
+
+ZIP-installed copies now check GitHub Releases automatically and offer an in-plugin update after confirmation, with progress, retry, and rollback on installation failure. Restart DSH after a successful update; settings and other plugins are retained.
+ZIP 安装的插件现在会自动检查 GitHub Releases，经确认后可在插件内更新，显示进度并支持重试与失败回滚。更新完成后请重启 DSH；保留配置和其他插件。
+
+Existing 0.2.0 installations must run this newer installer once for the same DSH home to gain self-updates. Plugin updates do not update the MoE4All Engine.
+已安装 0.2.0 的用户需先用此新版安装包选择同一 DSH 目录升级一次，才能获得自更新功能。插件更新不会同时更新 MoE4All 引擎。
+` : ''
   return `# MoE4All for DSH ${version}
 
 DeepSeek Harness plugin for local MoE4All inference, engine management, and model discovery.
@@ -25,6 +35,7 @@ DeepSeek Harness plugin for local MoE4All inference, engine management, and mode
 
 The installer uses the bundled prebuilt plugin and does not build from Git. For upgrades, select the same DSH home; existing settings and models are retained.
 安装器使用包内预编译插件，不从 Git 现场构建。升级时选择同一 DSH 目录，保留原有配置和模型。
+${updates}
 
 ## Compatibility / 兼容范围
 

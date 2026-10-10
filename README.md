@@ -18,7 +18,7 @@ The same MoE4All page covers Engine status, live slot speed, model selection, au
 
 ### Before the DSH catalog listing: one-click Windows install
 
-1. Download the [0.2.0 Windows installer ZIP](https://github.com/Headmaster218/dsh-llm-moe4all/releases/download/release-0.2.0/dsh-llm-moe4all-windows.zip), or check [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) for newer versions.
+1. Download the [0.2.1 Windows installer ZIP](https://github.com/Headmaster218/dsh-llm-moe4all/releases/download/release-0.2.1/dsh-llm-moe4all-windows.zip), or check [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) for newer versions.
 2. Extract the ZIP and double-click `Install-MoE4All-Plugin.cmd`.
 3. Select the target DSH. When prompted, finish active work, fully exit that DSH instance, and press Enter.
 4. Restart the selected DSH. On its first unconfigured start, the plugin opens the MoE4All setup automatically. If it was dismissed, open **Settings > MoE4All**.
@@ -47,7 +47,7 @@ The Release ZIP contains a prebuilt `dsh-llm-moe4all.tgz`. The one-click install
 powershell.exe -NoLogo -NoProfile -File .\install-plugin.ps1
 ```
 
-For a ZIP-installed copy, download and run the newer Windows installer to upgrade. Market-managed installations use the Market update flow when its public API is available.
+Starting with 0.2.1, ZIP-installed copies can check GitHub Releases and update from inside the plugin. Existing 0.2.0 copies need the newer Windows installer once to gain this capability. Market-managed installations keep the Market update flow when its public API is available.
 
 ## Quick Start
 
@@ -62,12 +62,13 @@ Automatic Engine installation and the Windows installer support **Windows x86_64
 
 ## Plugin Updates
 
-When `dshmarket` with the public update API is installed, the plugin checks for its own update shortly after DSH opens. An available update appears as a small non-blocking prompt with progress, retry, and the correct refresh or restart action.
+The plugin checks shortly after DSH opens and every six hours while its page remains open. Use **Settings > MoE4All > Diagnostics > Check plugin updates** for a manual check. Downloading/installing a plugin update always requires confirmation.
 
-- The updater calls only `/dsh-market/api/v1/*`; it does not spawn a package manager or edit the profile itself.
-- Update checks are silent when DSH Market is absent or its public API is unavailable.
-- The prompt updates only `dsh-llm-moe4all`. Engine releases remain under **Settings > MoE4All > Engine**.
-- An active agent may cause DSH Market to defer the update until the run finishes.
+- **ZIP/local `.tgz` installs:** check this repository's latest stable GitHub Release, not `main` or prerelease tags. The prompt shows download progress, stop/retry controls, and a release-page link. SHA256 and the prebuilt package are verified before the current DSH profile's installer runs with dependency build scripts disabled. Only this plugin's dependency is retargeted; an installation failure attempts to restore the previous manifest, lockfile, and package. Backups remain in `profiles/<profile>/.moe4all-plugin-updates`.
+- **Market/npm/Git installs:** continue through the public `/dsh-market/api/v1/*` API when available. Development links/checkouts are not silently replaced by release archives. Unsupported hosts can use the Windows installer or their original installation method.
+- Update from the local loopback UI after stopping the plugin-managed Engine and finishing active agent runs. An external Engine is never stopped by the updater.
+- After a standalone update, **restart DSH manually** to load the new code. The updater does not terminate DSH, restart Desktop, or stop the Engine itself.
+- The update changes only `dsh-llm-moe4all`, not Engine releases, model files, KV caches, credentials, or conversations. Engine updates remain under **Settings > MoE4All > Engine**.
 
 For an npm-installed copy (after npm publication), update with:
 
@@ -77,7 +78,7 @@ dsh plugin --profile web update dsh-llm-moe4all
 
 Restart the DSH profile after a Bundle update.
 
-The ZIP installer pins a versioned local `.tgz`. The command above cannot fetch a newer local archive. For that installation, run the newer ZIP installer and select the same DSH home. Do not assume that catalog listing alone converts an existing local-file dependency into a market-managed one.
+The ZIP installer pins a versioned local `.tgz`; the command above cannot fetch a newer local archive. Use the built-in Release updater (0.2.1+) or rerun the newer ZIP installer for the same DSH home. Catalog listing does not convert a local-file dependency into a market-managed one.
 
 ## Disable or Uninstall
 
@@ -138,7 +139,7 @@ It does not upload model files, conversation content, or API keys to the plugin 
 
 - **Plugin does not appear:** fully restart the DSH profile after install and confirm `dsh-llm-moe4all` is enabled under **Plugins**.
 - **Installer cannot find DSH:** install DSH Desktop, or put `dsh` on `PATH`, then rerun the script. The manual command is printed on failure.
-- **Update prompt never appears:** install or update `dshmarket`; without its public update API, use the upgrade method for your installation source above.
+- **Update prompt never appears:** check manually under **Diagnostics**. ZIP self-updates require 0.2.1+; 0.2.0 needs one installer upgrade. Market-managed copies require the public DSH Market update API. Network failures offer retry and the release-page link.
 - **Engine does not start:** open **Settings > MoE4All > Diagnostics** and inspect startup output. A busy configured port or low free RAM/VRAM requires confirmation or a different port; unrelated local inference processes are not blocked.
 - **Need to roll back:** use DSH Market's rollback action when offered, or install a known package/tag and restart the profile.
 

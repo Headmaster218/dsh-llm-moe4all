@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.2.1
+
+- Offer stable GitHub Release self-updates for ZIP/local-tarball installations before catalog inclusion, without migrating Market or development sources.
+- Show plugin download progress, cancellation, retry, and manual release links; add a manual check under Diagnostics.
+- Verify SHA256, package identity, version, and prebuilt entries before installation through the current DSH profile.
+- Retain rollback archives and restore the previous package after an installation failure; preserve unrelated profile settings and defer updates while an Engine or agent is active.
+- Require a manual DSH restart after a standalone update and keep plugin updates separate from Engine/model downloads.
+- Exercise real packaged-plugin update and restart flows on legacy DSH and official 0.2.0-rc.2 in CI.
+
 ## 0.2.0
 
 - First stable plugin release, with a Windows x86_64 one-click installer.
