@@ -18,12 +18,12 @@ The same MoE4All page covers Engine status, live slot speed, model selection, au
 
 ### Before the DSH catalog listing: one-click Windows install
 
-1. Download the [0.2.1 Windows installer ZIP](https://github.com/Headmaster218/dsh-llm-moe4all/releases/download/release-0.2.1/dsh-llm-moe4all-windows.zip), or check [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) for newer versions.
+1. Download the [0.2.2 Windows installer ZIP](https://github.com/Headmaster218/dsh-llm-moe4all/releases/download/release-0.2.2/dsh-llm-moe4all-windows.zip), or check [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) for newer versions.
 2. Extract the ZIP and double-click `Install-MoE4All-Plugin.cmd`.
 3. Select the target DSH. When prompted, finish active work, fully exit that DSH instance, and press Enter.
 4. Restart the selected DSH. On its first unconfigured start, the plugin opens the MoE4All setup automatically. If it was dismissed, open **Settings > MoE4All**.
 
-The installer lists the DSH homes it can identify and asks which one to modify. It recognizes normal DSH Desktop installs, running source-built DSH instances, and an explicitly entered `DSH_HOME`. It then stores the bundled prebuilt plugin package under the selected home and adds it to the `web` profile. It does not clone GitHub source, run an install-time build, or require administrator rights.
+The installer provides Chinese and English guidance, lists the DSH homes it can identify, and asks which one to modify. It recognizes normal DSH Desktop installs, running source-built DSH instances, and an explicitly entered `DSH_HOME`. It then stores the bundled prebuilt plugin package under the selected home and adds it to the `web` profile. It does not clone GitHub source, run an install-time build, or require administrator rights.
 
 A manually entered home uses its matching detected launcher. If no launcher can be matched and several are available, the installer asks which launcher to use rather than choosing the first one.
 

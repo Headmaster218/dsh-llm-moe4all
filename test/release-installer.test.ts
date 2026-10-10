@@ -24,6 +24,23 @@ test('Windows release installer uses and persists the bundled package', async ()
   assert.match(builder, /PLUGIN-VERSION\.txt/u)
 })
 
+test('Windows installer guidance is bilingual and PowerShell 5.1 can read its Chinese text', async () => {
+  const installerBytes = await readFile(new URL('../installer/install-plugin.ps1', import.meta.url))
+  const installer = installerBytes.toString('utf8')
+  const launcher = await read('../installer/Install-MoE4All-Plugin.cmd')
+  const instructions = await read('../installer/README-INSTALL.txt')
+
+  assert.deepEqual([...installerBytes.subarray(0, 3)], [0xef, 0xbb, 0xbf])
+  assert.match(launcher, /chcp 65001 >nul/u)
+  assert.match(launcher, /安装未完成.*Installation did not complete/u)
+  assert.match(installer, /安装向导.*plugin installer/u)
+  assert.match(installer, /请选择.*Select the DSH profile/u)
+  assert.match(installer, /安装完成.*Installation complete/u)
+  assert.match(installer, /错误.*Error:/u)
+  assert.match(instructions, /一键安装.*One-click install/u)
+  assert.match(instructions, /首次.*first-use/isu)
+})
+
 test('stale Git dependency repair is scoped and byte-restorable', { skip: process.platform !== 'win32' }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'moe4all-installer-test-'))
   const expectedPrefix = resolve(tmpdir()) + sep
@@ -78,9 +95,10 @@ test('release publication waits for reusable compatibility CI and validates asse
 })
 
 test('release scripts parse on Windows PowerShell 5.1 and reject mismatched tags', { skip: process.platform !== 'win32' }, async () => {
+  const installer = fileURLToPath(new URL('../installer/install-plugin.ps1', import.meta.url))
   const builder = fileURLToPath(new URL('../scripts/build-release.ps1', import.meta.url))
   const checker = fileURLToPath(new URL('../scripts/check-release.ps1', import.meta.url))
-  for (const script of [builder, checker]) {
+  for (const script of [installer, builder, checker]) {
     const parsing = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
       '$tokens = $null; $errors = $null; [System.Management.Automation.Language.Parser]::ParseFile($env:M4A_TEST_SCRIPT, [ref]$tokens, [ref]$errors) | Out-Null; if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }',
     ], { encoding: 'utf8', timeout: 10_000, env: { ...process.env, M4A_TEST_SCRIPT: script } })

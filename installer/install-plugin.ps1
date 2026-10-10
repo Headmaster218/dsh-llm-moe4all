@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$Profile = 'web',
     [string]$DshHome = '',
@@ -66,7 +66,7 @@ function Get-RunningSourceTargets {
             if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { continue }
             $targets.Add([pscustomobject]@{
                 Kind = 'source'
-                Label = "DSH source build ($stateName)"
+                Label = "DSH 源码版 / DSH source build ($stateName)"
                 Runner = $runner
                 Cli = $cli
                 Bin = Join-Path $harnessRoot 'runtime\pnpm\node_modules\.bin'
@@ -126,7 +126,7 @@ function Get-DshTargets {
             $seenHomes[$key] = $true
             $targets.Add([pscustomobject]@{
                 Kind = 'path'
-                Label = 'DSH command on PATH'
+                Label = 'PATH 中的 DSH 命令 / DSH command on PATH'
                 Runner = $command.Source
                 Cli = $null
                 Bin = $null
@@ -150,11 +150,11 @@ function New-CustomTarget {
     $resolvedHome = [IO.Path]::GetFullPath($HomePath.Trim().Trim('"'))
     $manifest = Join-Path $resolvedHome "profiles\$ProfileName\package.json"
     if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) {
-        throw "The selected DSH home has no $ProfileName profile: $resolvedHome"
+        throw "所选 DSH 数据目录没有 $ProfileName 配置 / The selected DSH home has no $ProfileName profile: $resolvedHome"
     }
     return [pscustomobject]@{
         Kind = 'custom'
-        Label = 'Custom DSH home'
+        Label = '自定义 DSH 数据目录 / Custom DSH home'
         Runner = $Launcher.Runner
         Cli = $Launcher.Cli
         Bin = $Launcher.Bin
@@ -180,17 +180,17 @@ function Select-CustomDshTarget {
     if ($Targets.Count -eq 1) { return New-CustomTarget $Targets[0] $resolvedHome $ProfileName }
 
     Write-Host ''
-    Write-Host 'Select the DSH launcher for this custom home:' -ForegroundColor Cyan
+    Write-Host '为此自定义数据目录选择 DSH 启动器 / Select the DSH launcher for this custom home:' -ForegroundColor Cyan
     for ($i = 0; $i -lt $Targets.Count; $i++) {
         Write-Host ("  [{0}] {1}: {2}" -f ($i + 1), $Targets[$i].Label, $Targets[$i].Detail)
     }
     while ($true) {
-        $choice = (Read-Host 'Launcher').Trim()
+        $choice = (Read-Host '启动器 / Launcher').Trim()
         $number = 0
         if ([int]::TryParse($choice, [ref]$number) -and $number -ge 1 -and $number -le $Targets.Count) {
             return New-CustomTarget $Targets[$number - 1] $resolvedHome $ProfileName
         }
-        Write-Host 'Choose one listed launcher number.' -ForegroundColor Yellow
+        Write-Host '请输入列表中的启动器编号 / Choose one listed launcher number.' -ForegroundColor Yellow
     }
 }
 
@@ -202,29 +202,29 @@ function Select-DshTarget {
     )
 
     if ($Targets.Count -eq 0) {
-        throw 'No DSH launcher was found. Install DSH Desktop or put the dsh command on PATH, then run this installer again.'
+        throw '未找到 DSH 启动器。请先安装 DSH Desktop 或将 dsh 命令加入 PATH，再重试 / No DSH launcher was found. Install DSH Desktop or put the dsh command on PATH, then run this installer again.'
     }
     if (-not [string]::IsNullOrWhiteSpace($RequestedHome)) {
         return Select-CustomDshTarget $Targets $RequestedHome $ProfileName
     }
 
     Write-Host ''
-    Write-Host 'Select the DSH profile to install into:' -ForegroundColor Cyan
+    Write-Host '请选择要安装到的 DSH 数据目录 / Select the DSH profile to install into:' -ForegroundColor Cyan
     for ($i = 0; $i -lt $Targets.Count; $i++) {
         Write-Host ("  [{0}] {1}" -f ($i + 1), $Targets[$i].Label)
-        Write-Host ('      DSH home: ' + $Targets[$i].Home)
-        Write-Host ('      Launcher: ' + $Targets[$i].Detail)
+        Write-Host ('      数据目录 / DSH home: ' + $Targets[$i].Home)
+        Write-Host ('      启动器 / Launcher: ' + $Targets[$i].Detail)
     }
-    Write-Host '  [M] Enter another DSH_HOME'
+    Write-Host '  [M] 输入其他 DSH 数据目录 / Enter another DSH_HOME'
 
     while ($true) {
         $defaultHint = if ($Targets.Count -eq 1) { ' [1]' } else { '' }
-        $choice = (Read-Host ("Select$defaultHint")).Trim()
+        $choice = (Read-Host ("选择 / Select$defaultHint")).Trim()
         if ($choice -eq '' -and $Targets.Count -eq 1) { return $Targets[0] }
         if ($choice -match '^[Mm]$') {
-            $customHome = Read-Host 'DSH_HOME'
+            $customHome = Read-Host 'DSH 数据目录 / DSH_HOME'
             if ([string]::IsNullOrWhiteSpace($customHome)) {
-                Write-Host 'DSH_HOME cannot be empty.' -ForegroundColor Yellow
+                Write-Host 'DSH 数据目录不能为空 / DSH_HOME cannot be empty.' -ForegroundColor Yellow
                 continue
             }
             return Select-CustomDshTarget $Targets $customHome $ProfileName
@@ -233,7 +233,7 @@ function Select-DshTarget {
         if ([int]::TryParse($choice, [ref]$number) -and $number -ge 1 -and $number -le $Targets.Count) {
             return $Targets[$number - 1]
         }
-        Write-Host 'Choose one listed number or M.' -ForegroundColor Yellow
+        Write-Host '请输入列表中的编号，或输入 M / Choose one listed number or M.' -ForegroundColor Yellow
     }
 }
 
@@ -241,19 +241,19 @@ function Wait-ForTargetExit {
     param([pscustomobject]$Target)
 
     Write-Host ''
-    Write-Host ('Selected: ' + $Target.Label) -ForegroundColor Cyan
-    Write-Host ('DSH home: ' + $Target.Home)
-    Write-Host 'Finish active work, fully exit this DSH instance, then press Enter.' -ForegroundColor Yellow
+    Write-Host ('已选择 / Selected: ' + $Target.Label) -ForegroundColor Cyan
+    Write-Host ('数据目录 / DSH home: ' + $Target.Home)
+    Write-Host '请完成当前任务，彻底退出所选 DSH，再按回车继续 / Finish active work, fully exit this DSH instance, then press Enter.' -ForegroundColor Yellow
     [void](Read-Host)
 
     if ($Target.Home.Equals([IO.Path]::GetFullPath($desktopHome), [StringComparison]::OrdinalIgnoreCase)) {
         if ($null -ne (Get-Process -Name 'DSH Desktop' -ErrorAction SilentlyContinue)) {
-            throw 'DSH Desktop is still running. Close it before installing the plugin.'
+            throw 'DSH Desktop 仍在运行，请退出后再安装插件 / DSH Desktop is still running. Close it before installing the plugin.'
         }
     }
     foreach ($processId in $Target.ProcessIds) {
         if ($null -ne (Get-Process -Id $processId -ErrorAction SilentlyContinue)) {
-            throw 'The selected source-built DSH is still running. Close it before installing the plugin.'
+            throw '所选源码版 DSH 仍在运行，请退出后再安装插件 / The selected source-built DSH is still running. Close it before installing the plugin.'
         }
     }
 }
@@ -363,18 +363,18 @@ function Invoke-Installer {
     $packageVersion = ''
 
     try {
-        Write-Host 'MoE4All plugin installer for DeepSeek Harness' -ForegroundColor Cyan
-        Write-Host 'Profile:' $Profile
+        Write-Host 'MoE4All 插件安装向导 / MoE4All plugin installer for DeepSeek Harness' -ForegroundColor Cyan
+        Write-Host '配置 / Profile:' $Profile
 
         if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) {
-            throw 'The bundled package dsh-llm-moe4all.tgz is missing. Download and extract the complete Windows installer ZIP again.'
+            throw '缺少 dsh-llm-moe4all.tgz，请重新下载并完整解压 Windows 安装包 / The bundled package dsh-llm-moe4all.tgz is missing. Download and extract the complete Windows installer ZIP again.'
         }
         if (-not (Test-Path -LiteralPath $versionFile -PathType Leaf)) {
-            throw 'PLUGIN-VERSION.txt is missing. Download and extract the complete Windows installer ZIP again.'
+            throw '缺少 PLUGIN-VERSION.txt，请重新下载并完整解压 Windows 安装包 / PLUGIN-VERSION.txt is missing. Download and extract the complete Windows installer ZIP again.'
         }
         $packageVersion = [IO.File]::ReadAllText($versionFile).Trim()
         if ($packageVersion -notmatch '^[0-9A-Za-z][0-9A-Za-z.-]*$') {
-            throw 'PLUGIN-VERSION.txt does not contain a valid package version.'
+            throw 'PLUGIN-VERSION.txt 中的版本号无效 / PLUGIN-VERSION.txt does not contain a valid package version.'
         }
 
         $targets = @(Get-DshTargets $Profile)
@@ -387,9 +387,9 @@ function Invoke-Installer {
         $profileManifest = Join-Path $profileDirectory 'package.json'
         $hasProfileManifest = Test-Path -LiteralPath $profileManifest -PathType Leaf
 
-        Write-Host ('Plugin package: bundled ' + $packageVersion)
+        Write-Host ('内置插件包 / Plugin package: bundled ' + $packageVersion)
         if ($Offline) {
-            Write-Host 'The release installer always uses its bundled prebuilt package; no plugin source download is needed.'
+            Write-Host '安装器使用内置预编译插件，无需下载插件源码 / The release installer always uses its bundled prebuilt package; no plugin source download is needed.'
         }
 
         $nativeArgs = if ($hasProfileManifest) {
@@ -398,13 +398,13 @@ function Invoke-Installer {
             @('plugin', '--profile', $Profile, 'add', $cachedArchive)
         }
         if ($DryRun) {
-            Write-Host ('Launcher: ' + $target.Runner)
-            if ($null -ne $target.Cli) { Write-Host ('CLI: ' + $target.Cli) }
-            Write-Host ('Cached package: ' + $cachedArchive)
+            Write-Host ('启动器 / Launcher: ' + $target.Runner)
+            if ($null -ne $target.Cli) { Write-Host ('命令行入口 / CLI: ' + $target.Cli) }
+            Write-Host ('缓存包 / Cached package: ' + $cachedArchive)
             if ($hasProfileManifest) {
-                Write-Host ('Dependency repair: set ' + $pluginName + ' to the cached package with rollback backups')
+                Write-Host ('依赖修复 / Dependency repair: ' + $pluginName + ' -> ' + $cachedArchive + ' (保留回滚备份 / with rollback backups)')
             }
-            Write-Host ('Command arguments: ' + ($nativeArgs -join ' '))
+            Write-Host ('命令参数 / Command arguments: ' + ($nativeArgs -join ' '))
             return 0
         }
 
@@ -418,12 +418,13 @@ function Invoke-Installer {
 
         if ($hasProfileManifest) {
             $transaction = Set-ProfilePluginDependency $profileDirectory $cachedArchive
-            Write-Host ('Prepared profile dependency: ' + $transaction.PackageSpec)
+            Write-Host ('已准备配置依赖 / Prepared profile dependency: ' + $transaction.PackageSpec)
         }
 
+        Write-Host '正在安装，请稍候 / Installing, please wait...' -ForegroundColor Cyan
         $exitCode = Invoke-DshPluginCommand $target $nativeArgs
         if ($exitCode -ne 0) {
-            throw "dsh plugin install failed with exit code $exitCode."
+            throw "DSH 插件安装失败，退出码 $exitCode / dsh plugin install failed with exit code $exitCode."
         }
 
         $completedTransaction = $transaction
@@ -431,10 +432,11 @@ function Invoke-Installer {
         try { Complete-ProfilePluginDependency $completedTransaction } catch { Write-Warning $_.Exception.Message }
 
         Write-Host ''
-        Write-Host 'Installation complete.' -ForegroundColor Green
-        Write-Host ('Installed into: ' + $target.Home)
-        Write-Host 'Start or restart that DSH, then open Settings > MoE4All.'
-        Write-Host 'The first page will install the Engine and guide you to a first run.'
+        Write-Host '安装完成 / Installation complete.' -ForegroundColor Green
+        Write-Host ('安装位置 / Installed into: ' + $target.Home)
+        Write-Host '请启动或重启所选 DSH；首次使用会自动打开 MoE4All 设置 / Start or restart that DSH; first-use MoE4All setup opens automatically.'
+        Write-Host '若已关闭引导，请打开 设置 > MoE4All / If dismissed, open Settings > MoE4All.'
+        Write-Host '首次配置会下载引擎，并引导选择模型和运行 / First-use setup downloads the Engine and guides model selection and a first run.'
         return 0
     } catch {
         if ($null -ne $transaction) {
@@ -442,7 +444,7 @@ function Invoke-Installer {
                 Restore-ProfilePluginDependency $transaction
                 $profileRestored = $true
             } catch {
-                Write-Warning ('Could not restore the selected profile automatically: ' + $_.Exception.Message)
+                Write-Warning ('无法自动恢复所选配置 / Could not restore the selected profile automatically: ' + $_.Exception.Message)
             }
         }
         if ($stagedArchiveCreated -and $null -ne $target -and $packageVersion -ne '') {
@@ -450,12 +452,12 @@ function Invoke-Installer {
             Remove-Item -LiteralPath $failedArchive -Force -ErrorAction SilentlyContinue
         }
         Write-Host ''
-        Write-Host ('Error: ' + $_.Exception.Message) -ForegroundColor Red
+        Write-Host ('错误 / Error: ' + $_.Exception.Message) -ForegroundColor Red
         if ($profileRestored) {
-            Write-Host 'The selected profile package.json and pnpm lockfile were restored.' -ForegroundColor Yellow
+            Write-Host '已恢复所选配置的 package.json 和 pnpm 锁文件 / The selected profile package.json and pnpm lockfile were restored.' -ForegroundColor Yellow
         }
-        Write-Host 'Retry with this installer; a plain pnpm add cannot repair an existing stale Git dependency.'
-        Write-Host 'Project releases: https://github.com/Headmaster218/dsh-llm-moe4all/releases'
+        Write-Host '请重新运行此安装器；直接 pnpm add 无法修复旧的失效 Git 依赖 / Retry with this installer; a plain pnpm add cannot repair an existing stale Git dependency.'
+        Write-Host '项目发行版 / Project releases: https://github.com/Headmaster218/dsh-llm-moe4all/releases'
         return 1
     }
 }

@@ -18,12 +18,12 @@ English documentation: [README.md](README.md)
 
 ### 收录 DSH 插件市场前：Windows 一键安装
 
-1. 直接下载 [0.2.1 Windows 一键安装 ZIP](https://github.com/Headmaster218/dsh-llm-moe4all/releases/download/release-0.2.1/dsh-llm-moe4all-windows.zip)，或打开 [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) 查看后续版本。
+1. 直接下载 [0.2.2 Windows 一键安装 ZIP](https://github.com/Headmaster218/dsh-llm-moe4all/releases/download/release-0.2.2/dsh-llm-moe4all-windows.zip)，或打开 [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) 查看后续版本。
 2. 解压并双击 `Install-MoE4All-Plugin.cmd`。
 3. 选择目标 DSH；看到提示后再完成当前任务、彻底退出所选 DSH，然后按回车继续。
 4. 重新启动所选 DSH。插件在首次尚未完成配置时会自动弹出 MoE4All 设置；若主动关闭，可再进入 **设置 > MoE4All**。
 
-安装器会列出能识别到的 DSH 数据目录，并要求用户明确选择。它支持常规 DSH Desktop、正在运行的源码版 DSH，也支持手动输入 `DSH_HOME`。随后，安装器会把压缩包内已经预编译好的插件保存到所选 DSH 的数据目录，再加入 `web` profile。它不会在安装时拉取 GitHub 源码或执行构建，也不需要管理员权限。
+安装器提供中英双语引导，会列出能识别到的 DSH 数据目录，并要求用户明确选择。它支持常规 DSH Desktop、正在运行的源码版 DSH，也支持手动输入 `DSH_HOME`。随后，安装器会把压缩包内已经预编译好的插件保存到所选 DSH 的数据目录，再加入 `web` profile。它不会在安装时拉取 GitHub 源码或执行构建，也不需要管理员权限。
 
 手动输入的数据目录优先使用与之匹配的已探测启动器；找不到匹配项且存在多个启动器时，还会要求选择启动器，不会直接使用第一个。
 

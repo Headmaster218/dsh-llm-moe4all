@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.2.2
+
+- Make Windows installer prompts, DSH selection, installation results, errors, and bundled instructions bilingual in Chinese and English.
+- Use UTF-8 console output and a BOM-encoded PowerShell installer so Chinese guidance remains readable on Windows PowerShell 5.1.
+- Preserve the existing installation, profile rollback, and plugin self-update behavior.
+
 ## 0.2.1
 
 - Offer stable GitHub Release self-updates for ZIP/local-tarball installations before catalog inclusion, without migrating Market or development sources.
