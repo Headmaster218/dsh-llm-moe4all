@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { compactUpdateVersion, MarketPluginUpdateApi } from '../src/client/plugin-update.js'
+import { compactUpdateVersion, MarketPluginUpdateApi, PluginUpdateApi } from '../src/client/plugin-update.js'
 
 const schema = 'dsh-market/update-api/v1'
 
@@ -149,4 +149,28 @@ test('does not rebind the browser fetch function to the API instance', async () 
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+test('local archives use GitHub Release updates even when a Market API exists', async () => {
+  const requests: string[] = []
+  const api = new PluginUpdateApi(async input => {
+    const url = String(input)
+    requests.push(url)
+    assert.ok(url.startsWith('/api/moe4all/plugin-update'))
+    return response({ schema: 'moe4all/plugin-update/v1', status: {
+      supported: true, source: 'github-release', installedVersion: '0.2.1', latestVersion: '0.2.2', updateAvailable: true,
+    } })
+  })
+  assert.equal((await api.discover())?.restartSupported, false)
+  assert.equal((await api.check(true)).updateAvailable, true)
+  assert.match(requests[1]!, /force=1/)
+})
+
+test('market and development installs keep their public Market update path', async () => {
+  const api = new PluginUpdateApi(async input => String(input).startsWith('/api/moe4all/')
+    ? response({ schema: 'moe4all/plugin-update/v1', status: { supported: false } })
+    : response({ schema, features: { check: true, update: true }, restart: { supported: true }, endpoints: {
+      updates: '/dsh-market/api/v1/updates', operations: '/dsh-market/api/v1/operations', restart: '/dsh-market/api/v1/restart',
+    } }))
+  assert.equal((await api.discover())?.restartSupported, true)
 })

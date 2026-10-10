@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Download, RefreshCw, RotateCcw, X } from 'lucide-react'
+import { Download, ExternalLink, RefreshCw, RotateCcw, Square, X } from 'lucide-react'
 
 import type { Translate } from './workspace-ui.js'
 import {
   compactUpdateVersion,
-  MarketPluginUpdateApi,
+  CHECK_PLUGIN_UPDATE_EVENT,
+  PluginUpdateApi,
   type MarketUpdateCapabilities,
   type PluginUpdateOperation,
   type PluginUpdateStatus,
@@ -14,7 +15,7 @@ interface NoticeState {
   capabilities: MarketUpdateCapabilities
   status: PluginUpdateStatus
   operation: PluginUpdateOperation | null
-  phase: 'available' | 'updating' | 'complete' | 'failed'
+  phase: 'checking' | 'current' | 'available' | 'updating' | 'complete' | 'failed'
   error: string | null
 }
 
@@ -39,27 +40,44 @@ function rememberDismissed(status: PluginUpdateStatus): void {
 }
 
 export function PluginUpdateNotice({ t }: { t: Translate }) {
-  const api = useRef(new MarketPluginUpdateApi())
+  const api = useRef(new PluginUpdateApi())
+  const busy = useRef(false)
   const [notice, setNotice] = useState<NoticeState | null>(null)
 
   useEffect(() => {
     let active = true
-    const timer = window.setTimeout(() => {
+    const check = (force = false) => {
+      if (busy.current) return
+      busy.current = true
+      const placeholder: NoticeState = {
+        capabilities: { endpoints: { updates: '', operations: '', restart: '' }, restartSupported: false },
+        status: { source: 'unknown', installedVersion: null, latestVersion: null, updateAvailable: false },
+        operation: null, phase: 'checking', error: null,
+      }
+      if (force) setNotice(placeholder)
       void (async () => {
         try {
           const capabilities = await api.current.discover()
-          if (capabilities === null) return
-          const status = await api.current.check()
-          if (!active || !status.updateAvailable || wasDismissed(status)) return
-          setNotice({ capabilities, status, operation: null, phase: 'available', error: null })
-        } catch {
-          // Update discovery must never interfere with startup or conversation work.
+          if (capabilities === null) throw new Error(t('pluginUpdateManual'))
+          const status = await api.current.check(force)
+          if (!active || (!force && (!status.updateAvailable || wasDismissed(status)))) return
+          setNotice({ capabilities, status, operation: null, phase: status.updateAvailable ? 'available' : 'current', error: null })
+        } catch (error) {
+          if (active && force) setNotice({ ...placeholder, phase: 'failed', error: String(error) })
+        } finally {
+          busy.current = false
         }
       })()
-    }, 3500)
+    }
+    const manualCheck = () => check(true)
+    const timer = window.setTimeout(() => check(), 3500)
+    const interval = window.setInterval(() => check(), 6 * 60 * 60_000)
+    window.addEventListener(CHECK_PLUGIN_UPDATE_EVENT, manualCheck)
     return () => {
       active = false
       window.clearTimeout(timer)
+      window.clearInterval(interval)
+      window.removeEventListener(CHECK_PLUGIN_UPDATE_EVENT, manualCheck)
     }
   }, [])
 
@@ -71,6 +89,7 @@ export function PluginUpdateNotice({ t }: { t: Translate }) {
   }
 
   const update = async () => {
+    busy.current = true
     setNotice(current => current === null ? null : { ...current, phase: 'updating', error: null })
     try {
       const started = await api.current.start()
@@ -93,6 +112,8 @@ export function PluginUpdateNotice({ t }: { t: Translate }) {
         phase: 'failed',
         error: error instanceof Error ? error.message : String(error),
       })
+    } finally {
+      busy.current = false
     }
   }
 
@@ -115,14 +136,14 @@ export function PluginUpdateNotice({ t }: { t: Translate }) {
       <header>
         <Download size={17} />
         <strong>{notice.phase === 'complete' ? t('pluginUpdateComplete') : t('pluginUpdateTitle')}</strong>
-        <button className="m4a-icon-btn" type="button" onClick={dismiss} title={t('dismiss')} aria-label={t('dismiss')}>
+        <button className="m4a-icon-btn" type="button" disabled={notice.phase === 'updating' || notice.phase === 'checking'} onClick={dismiss} title={t('dismiss')} aria-label={t('dismiss')}>
           <X size={15} />
         </button>
       </header>
       <p>{notice.phase === 'complete'
         ? needsRestart ? t('pluginRestartRequired') : t('pluginRefreshRequired')
-        : t('pluginUpdateAvailable')}</p>
-      <code>{version}</code>
+        : t(notice.phase === 'failed' ? 'pluginUpdateFailed' : notice.phase === 'current' ? 'pluginNoUpdate' : notice.phase === 'checking' ? 'pluginChecking' : 'pluginUpdateAvailable')}</p>
+      {notice.status.latestVersion !== null && <code>{version}</code>}
       {notice.phase === 'updating' && (
         <div className="m4a-plugin-update-progress">
           <progress max={100} value={progress ?? undefined} />
@@ -137,10 +158,18 @@ export function PluginUpdateNotice({ t }: { t: Translate }) {
           </button>
         )}
         {notice.phase === 'failed' && (
-          <button className="m4a-btn" type="button" onClick={() => void update()}>
+          <button className="m4a-btn" type="button" onClick={() => notice.operation ? void update() : window.dispatchEvent(new Event(CHECK_PLUGIN_UPDATE_EVENT))}>
             <RotateCcw size={14} /> {t('pluginUpdateRetry')}
           </button>
         )}
+        {notice.phase === 'updating' && notice.status.source === 'github-release' && !['install', 'rollback'].includes(operation?.progress.phase ?? '') && (
+          <button className="m4a-btn" type="button" onClick={() => void api.current.cancel().catch(error => {
+            setNotice(current => current ? { ...current, error: String(error) } : null)
+          })}><Square size={14} /> {t('stopDownload')}</button>
+        )}
+        <a className="m4a-btn" href="https://github.com/Headmaster218/dsh-llm-moe4all/releases" target="_blank" rel="noreferrer">
+          <ExternalLink size={14} /> {t('openReleasePage')}
+        </a>
         {notice.phase === 'complete' && needsRestart && notice.capabilities.restartSupported && (
           <button className="m4a-btn m4a-btn--primary" type="button" onClick={() => void restart()}>
             <RefreshCw size={14} /> {t('restartDsh')}

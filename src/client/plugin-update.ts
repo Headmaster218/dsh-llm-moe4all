@@ -1,4 +1,5 @@
 export const PLUGIN_PACKAGE_NAME = 'dsh-llm-moe4all'
+export const CHECK_PLUGIN_UPDATE_EVENT = 'moe4all-check-plugin-update'
 
 const UPDATE_SCHEMA = 'dsh-market/update-api/v1'
 const API_PREFIX = '/dsh-market/api/v1/'
@@ -225,4 +226,71 @@ export class MarketPluginUpdateApi {
 export function compactUpdateVersion(value: string | null): string {
   if (value === null) return '?'
   return /^[0-9a-f]{40}$/i.test(value) ? value.slice(0, 10) : value
+}
+
+/** A local archive has its own release source; never migrate a Market/source install silently. */
+export class PluginUpdateApi {
+  private readonly market: MarketPluginUpdateApi
+  private local = false
+  constructor(private readonly fetcher: FetchLike = (input, init) => fetch(input, init)) {
+    this.market = new MarketPluginUpdateApi(fetcher)
+  }
+
+  private async localJson(query = '', init?: RequestInit): Promise<Record<string, unknown>> {
+    const response = await this.fetcher(`/api/moe4all/plugin-update${query}`, {
+      cache: 'no-store', credentials: 'same-origin', signal: AbortSignal.timeout(40_000), ...init,
+    })
+    const body = record(await response.json())
+    if (!response.ok) throw new Error(text(body?.error) ?? `Plugin update request failed (HTTP ${response.status}).`)
+    if (body?.schema !== 'moe4all/plugin-update/v1') throw new Error('Invalid plugin release update response.')
+    return body
+  }
+
+  async discover(): Promise<MarketUpdateCapabilities | null> {
+    try {
+      const body = await this.localJson()
+      if (record(body.status)?.supported === true) {
+        this.local = true
+        return { endpoints: { updates: '/api/moe4all/plugin-update', operations: '/api/moe4all/plugin-update', restart: '' }, restartSupported: false }
+      }
+    } catch { /* Unsupported hosts can still use the public Market API. */ }
+    this.local = false
+    return this.market.discover()
+  }
+
+  async check(force = false): Promise<PluginUpdateStatus> {
+    if (!this.local) return this.market.check(force)
+    const status = record((await this.localJson(`?check=1${force ? '&force=1' : ''}`)).status)
+    if (!status || status.source !== 'github-release') throw new Error('This plugin installation is no longer managed by the release updater.')
+    return {
+      source: 'github-release', installedVersion: text(status.installedVersion), latestVersion: text(status.latestVersion),
+      updateAvailable: status.updateAvailable === true,
+    }
+  }
+
+  async start(): Promise<PluginUpdateOperation> {
+    return this.local ? operationOf((await this.localJson('', { method: 'POST' })).operation) : this.market.start()
+  }
+  async operation(id: string): Promise<PluginUpdateOperation> {
+    if (!this.local) return this.market.operation(id)
+    const operation = operationOf(record((await this.localJson()).status)?.operation)
+    if (operation.operationId !== id) throw new Error('The plugin update operation changed. Check its status before retrying.')
+    return operation
+  }
+  async waitForCompletion(id: string, progress: (operation: PluginUpdateOperation) => void): Promise<PluginUpdateOperation> {
+    if (!this.local) return this.market.waitForCompletion(id, progress)
+    const deadline = Date.now() + 10 * 60_000
+    while (Date.now() < deadline) {
+      const operation = await this.operation(id)
+      progress(operation)
+      if (!['queued', 'running'].includes(operation.state)) return operation
+      await new Promise(done => setTimeout(done, 750))
+    }
+    throw new Error('Plugin update timed out. Check the update status before retrying.')
+  }
+  async cancel(): Promise<void> {
+    if (!this.local) throw new Error('Cancel this update through DSH Market.')
+    await this.localJson('?cancel=1', { method: 'POST' })
+  }
+  restart(): Promise<void> { return this.market.restart() }
 }

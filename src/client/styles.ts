@@ -242,7 +242,7 @@ export const styles = `
 .m4a-plugin-update header strong { color:var(--m4a-text); font-size:13px; }
 .m4a-plugin-update p { margin:0; color:var(--m4a-muted); overflow-wrap:anywhere; }
 .m4a-plugin-update > code { width:max-content; max-width:100%; padding:3px 6px; border-radius:4px; background:var(--m4a-soft); color:var(--m4a-faint); font:10px/1.4 Consolas,monospace; overflow:hidden; text-overflow:ellipsis; }
-.m4a-plugin-update footer { display:flex; justify-content:flex-end; gap:7px; }
+.m4a-plugin-update footer { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; }
 .m4a-plugin-update-progress { display:grid; gap:5px; }
 .m4a-plugin-update-progress progress { width:100%; height:5px; accent-color:var(--m4a-accent); }
 .m4a-plugin-update-progress span { color:var(--m4a-faint); font-size:10px; overflow-wrap:anywhere; }

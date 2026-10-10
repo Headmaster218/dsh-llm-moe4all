@@ -11,6 +11,8 @@ import { makeEngineRoutes } from './host-routes.js'
 import { ModelDownloadManager } from './model-download.js'
 import { ModelProviderBridge, type ModelProviderConfig, type ProviderSettingsLike } from './model-provider.js'
 import { settingsNamespace } from './settings-compat.js'
+import { cliPluginUpdateTarget, desktopPluginCommand, PluginReleaseUpdater, type DesktopPluginInstaller, type PluginUpdateTarget } from './plugin-release-update.js'
+import { makePluginUpdateRoutes } from './plugin-update-routes.js'
 
 export const name = 'moe4all-engine'
 export const inject = ['settings', 'credentials']
@@ -167,6 +169,21 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
   let transition = Promise.resolve()
   let restartTimer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
+  let desktopTarget: PluginUpdateTarget | undefined
+  const pluginUpdates = new PluginReleaseUpdater({
+    target: () => ctx.get('desktopProfiles') ? desktopTarget : cliPluginUpdateTarget(),
+    busy: () => {
+      if (active?.controller.ownsProcess || active?.controller.isStarting) return true
+      const agents = ctx.get('agents') as { list?(): { status?: string }[] } | undefined
+      return agents?.list?.().some(agent => agent.status === 'running') ?? false
+    },
+  })
+  ctx.inject(['desktopProfiles', 'desktopPnpm'], desktopCtx => {
+    const profiles = desktopCtx.get('desktopProfiles') as { current: { dir: string } }
+    const installer = desktopCtx.get('desktopPnpm') as DesktopPluginInstaller
+    desktopTarget = { profileDirectory: profiles.current.dir, run: desktopPluginCommand(installer, profiles.current.dir) }
+    desktopCtx.effect(() => () => { desktopTarget = undefined }, 'moe4all-engine: Desktop plugin update target')
+  })
 
   const applySettings = (stopOwned = false): Promise<void> => {
     if (restartTimer !== undefined) { clearTimeout(restartTimer); restartTimer = undefined }
@@ -228,7 +245,10 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
       activateDefaultModel: async () => { await active?.provider.activateDefaultModel() },
       configuredExecutable: () => source().executable ?? '',
       pendingChanges: () => activeSignature !== configSignature(source()),
-      prepareStart: () => applySettings(),
+      prepareStart: () => {
+        if (pluginUpdates.updating) throw new Error('Wait for the plugin update to finish before starting the Engine.')
+        return applySettings()
+      },
       stop: async () => {
         if (!active?.controller.ownsProcess && !active?.controller.isStarting) throw new Error('Only an engine started by this plugin can be stopped.')
         await applySettings(true)
@@ -239,13 +259,14 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
       downloads,
     })
     routeCtx.effect(() => {
-      const disposers = routes.map((route) => webServer.register(route))
+      const disposers = [...routes, ...makePluginUpdateRoutes(pluginUpdates)].map((route) => webServer.register(route))
       return () => { for (const dispose of disposers) dispose() }
     }, 'moe4all-engine: local control routes')
   })
 
   return async () => {
     disposed = true
+    await pluginUpdates.dispose()
     stopSettingsWatch()
     if (restartTimer !== undefined) clearTimeout(restartTimer)
     await transition

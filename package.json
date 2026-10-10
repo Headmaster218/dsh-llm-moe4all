@@ -1,6 +1,6 @@
 {
   "name": "dsh-llm-moe4all",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "MoE4All local inference plugin for DeepSeek Harness, with engine management, model discovery, and downloads.",
   "license": "Apache-2.0",
   "author": "John / Headmaster218",
@@ -87,6 +87,7 @@
     "@deepseek-ai/schemastery": "3.18.4",
     "@types/node": "24.19.0",
     "@types/react": "18.3.31",
+    "@types/semver": "7.8.0",
     "react": "18.3.1",
     "tsdown": "0.22.2",
     "tsx": "4.23.15",
@@ -106,6 +107,8 @@
   "homepage": "https://github.com/Headmaster218/dsh-llm-moe4all#readme",
   "dependencies": {
     "lucide-react": "0.468.0",
+    "semver": "7.8.5",
+    "tar": "7.5.22",
     "undici": "6.29.0"
   }
 }

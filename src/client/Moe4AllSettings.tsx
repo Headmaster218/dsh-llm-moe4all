@@ -33,6 +33,7 @@ import type { ModelFileKind } from '../model-files.js'
 import type { Moe4AllLocaleKey } from './locales.js'
 import { useWorkspace, isInstalling } from './use-workspace.js'
 import { PARALLEL_OPTIONS } from './engine-setup.js'
+import { CHECK_PLUGIN_UPDATE_EVENT } from './plugin-update.js'
 import type { SettingsStore, SettingsStoreSnapshot } from './settings-store.js'
 import { fileName, formatBytes, samePath } from './workspace-model.js'
 import { AdvancedOptions } from './AdvancedOptions.js'
@@ -670,6 +671,12 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
       )}
       {tab === 'diagnostics' && (
         <section className="m4a-diagnostics">
+          <div className="m4a-section-heading">
+            <h3>{t('pluginUpdateTitle')}</h3>
+            <Button icon={RefreshCw} onClick={() => window.dispatchEvent(new Event(CHECK_PLUGIN_UPDATE_EVENT))}>
+              {t('checkPluginUpdates')}
+            </Button>
+          </div>
           <div className="m4a-section-heading">
             <h3>{t('runtimeOutput')}</h3>
             <div className="m4a-inline">
