@@ -114,6 +114,24 @@ test('treats an absent market API as an optional capability', async () => {
   assert.equal(await api.discover(), null)
 })
 
+test('bounds a stalled market request and lets discovery retry', async () => {
+  let requests = 0
+  const api = new MarketPluginUpdateApi(async (_input, init) => {
+    if (++requests > 1) return response({ error: 'missing' }, 404)
+    assert.ok(init?.signal)
+    return new Promise((_resolve, reject) => {
+      init.signal!.addEventListener('abort', () => reject(init.signal!.reason), { once: true })
+    })
+  }, async () => {}, 10)
+  const keepAlive = setTimeout(() => {}, 1000)
+  try {
+    await assert.rejects(api.discover(), { name: 'TimeoutError' })
+    assert.equal(await api.discover(), null)
+  } finally {
+    clearTimeout(keepAlive)
+  }
+})
+
 test('does not rebind the browser fetch function to the API instance', async () => {
   const originalFetch = globalThis.fetch
   globalThis.fetch = (function (this: unknown): Promise<Response> {

@@ -104,14 +104,17 @@ export class MarketPluginUpdateApi {
     private readonly delay: (milliseconds: number) => Promise<void> = milliseconds => (
       new Promise(resolve => setTimeout(resolve, milliseconds))
     ),
+    private readonly requestTimeoutMilliseconds = 15_000,
   ) {}
 
+  private request(path: string, init?: RequestInit): Promise<Response> {
+    const timeout = AbortSignal.timeout(this.requestTimeoutMilliseconds)
+    const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout
+    return this.fetcher(path, { cache: 'no-store', credentials: 'same-origin', ...init, signal })
+  }
+
   private async json(path: string, init?: RequestInit): Promise<Record<string, unknown>> {
-    const response = await this.fetcher(path, {
-      cache: 'no-store',
-      credentials: 'same-origin',
-      ...init,
-    })
+    const response = await this.request(path, init)
     let value: unknown = null
     try {
       value = await response.json()
@@ -126,10 +129,7 @@ export class MarketPluginUpdateApi {
   }
 
   async discover(): Promise<MarketUpdateCapabilities | null> {
-    const response = await this.fetcher('/dsh-market/api/v1/capabilities', {
-      cache: 'no-store',
-      credentials: 'same-origin',
-    })
+    const response = await this.request('/dsh-market/api/v1/capabilities')
     if (response.status === 404) return null
     let value: unknown = null
     try {

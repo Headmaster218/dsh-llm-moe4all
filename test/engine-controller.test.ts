@@ -59,6 +59,9 @@ test('default endpoint uses the MoE4All 8080 port and supports an explicit host 
 
 test('remote endpoints require explicit opt-in', () => {
   assert.throws(() => validateEndpoint('https://example.com/v1'), /not loopback/)
+  assert.throws(() => validateEndpoint('http://127.example.com/v1'), /not loopback/)
+  assert.throws(() => validateEndpoint('http://127.0.0.1.example.com/v1'), /not loopback/)
+  assert.equal(validateEndpoint('http://127.0.0.2/v1').hostname, '127.0.0.2')
   assert.equal(validateEndpoint('https://example.com/v1', true).hostname, 'example.com')
 })
 

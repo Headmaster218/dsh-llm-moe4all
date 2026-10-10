@@ -35,8 +35,10 @@ export interface PluginUpdateOperation {
 export declare class MarketPluginUpdateApi {
     private readonly fetcher;
     private readonly delay;
+    private readonly requestTimeoutMilliseconds;
     private capabilities;
-    constructor(fetcher?: FetchLike, delay?: (milliseconds: number) => Promise<void>);
+    constructor(fetcher?: FetchLike, delay?: (milliseconds: number) => Promise<void>, requestTimeoutMilliseconds?: number);
+    private request;
     private json;
     discover(): Promise<MarketUpdateCapabilities | null>;
     private ready;

@@ -2,7 +2,10 @@ import type { EngineConfig } from './engine-controller.js'
 
 export function isLoopback(hostname: string): boolean {
   const host = hostname.toLowerCase()
-  return host === 'localhost' || host === '::1' || host === '[::1]' || /^127(?:\.|$)/.test(host)
+  if (host === 'localhost' || host === '::1' || host === '[::1]') return true
+  const parts = host.split('.')
+  return parts.length === 4 && parts[0] === '127'
+    && parts.every(part => /^\d{1,3}$/u.test(part) && Number(part) <= 255)
 }
 
 export function endpointFromConfig(config: EngineConfig): string {
