@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Support both the legacy DSH settings scope and the DSH 0.2 configuration forms API.
+- Open the complete MoE4All setup surface on first use even when DSH restores a non-empty conversation.
+- Limit managed Engine concurrency to one through four slots.
+- Remove obsolete process-name and busy-prompt defaults.
+
 ## 0.2.0-alpha.19
 
 - Ask which DSH home to modify instead of silently choosing the first detected installation.

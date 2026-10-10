@@ -5,6 +5,8 @@ export interface SessionCacheSetup {
     idleSeconds: number;
     ttlHours: number;
 }
+export declare const PARALLEL_OPTIONS: readonly [1, 2, 3, 4];
+export declare function normalizeParallel(value: number): number;
 export interface EngineSetupValues {
     model: string;
     visionModel?: string;

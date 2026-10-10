@@ -1,12 +1,12 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
 import { Play, RefreshCw } from 'lucide-react'
 import type { Config } from '../index.js'
 import type { EngineControlStatus } from '../host-routes.js'
 import { fetchEngineStatus, startEngine } from './engine-api.js'
+import type { SettingsStore } from './settings-store.js'
 import { Button, Dialog, Field, Toggle, type Translate } from './workspace-ui.js'
 
-export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config>; t: Translate }) {
+export function EngineStartupOverlay({ scope, t }: { scope: SettingsStore<Config>; t: Translate }) {
   const snapshot = useSyncExternalStore(
     (listener) => scope.subscribe(listener),
     () => scope.getSnapshot(),

@@ -7,6 +7,12 @@ export interface SessionCacheSetup {
   ttlHours: number
 }
 
+export const PARALLEL_OPTIONS = [1, 2, 3, 4] as const
+
+export function normalizeParallel(value: number): number {
+  return Math.min(PARALLEL_OPTIONS.at(-1)!, Math.max(PARALLEL_OPTIONS[0], value))
+}
+
 export interface EngineSetupValues {
   model: string
   visionModel?: string
@@ -143,7 +149,7 @@ export function parseEngineArguments(arguments_: string[]): ParsedEngineArgument
     embeddingModel: optionValue(arguments_, '--embedding-model') ?? '',
     mtpModel,
     embeddingIdleTimeout: integer(optionValue(arguments_, '--embedding-idle-timeout'), 60),
-    parallel: Math.max(1, integer(optionValue(arguments_, '--parallel'), 1)),
+    parallel: normalizeParallel(integer(optionValue(arguments_, '--parallel'), 1)),
     profile: setValue(arguments_, 'device.auto_profile') === 'aggressive' ? 'aggressive' : 'conservative',
     mtp: setValue(arguments_, 'spec.mtp') === 'true',
     kvTypeK: setValue(arguments_, 'kv.type_k') ?? 'auto',
@@ -172,6 +178,9 @@ export function buildEngineArguments(values: EngineSetupValues): string[] {
   positiveInteger(values.contextWindow, 'The context window must be a positive token count.')
   positiveInteger(values.maxTokens, 'The maximum output must be a positive token count.')
   positiveInteger(values.parallel, 'Concurrent slots must be a positive integer.')
+  if (values.parallel > PARALLEL_OPTIONS.at(-1)!) {
+    throw new Error(`Concurrent slots must be between ${PARALLEL_OPTIONS[0]} and ${PARALLEL_OPTIONS.at(-1)}.`)
+  }
 
   const arguments_: string[] = [
     'serve',

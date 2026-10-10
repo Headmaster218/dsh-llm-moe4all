@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
-import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   Activity,
   ArrowDownToLine,
@@ -33,6 +32,8 @@ import type { InstalledEngine } from '../engine-release.js'
 import type { ModelFileKind } from '../model-files.js'
 import type { Moe4AllLocaleKey } from './locales.js'
 import { useWorkspace, isInstalling } from './use-workspace.js'
+import { PARALLEL_OPTIONS } from './engine-setup.js'
+import type { SettingsStore, SettingsStoreSnapshot } from './settings-store.js'
 import { fileName, formatBytes, samePath } from './workspace-model.js'
 import { AdvancedOptions } from './AdvancedOptions.js'
 import { ApiKeyField } from './ApiKeyField.js'
@@ -42,7 +43,7 @@ import { RuntimeMetrics } from './RuntimeStatus.js'
 import { Button, Dialog, Field, IconButton, Toggle, Transfer } from './workspace-ui.js'
 
 export interface Moe4AllSettingsInjected {
-  hooks: { moe4AllSettings: SettingsScope<Config> }
+  hooks: { moe4AllSettings: SettingsStore<Config> }
   pickDirectory(): Promise<string | null>
   save(next: Config): Promise<void>
 }
@@ -50,11 +51,11 @@ interface Moe4AllSettingsFace {
   pickDirectory(): Promise<string | null>
   save(next: Config): Promise<void>
   useMoe4AllSettings<S>(
-    selector: (snapshot: SettingsScopeSnapshot<Config>) => S,
+    selector: (snapshot: SettingsStoreSnapshot<Config>) => S,
     equal?: (left: S, right: S) => boolean,
   ): S
 }
-export type Moe4AllSettingsProps = PropsRuntime<'settings.section'> &
+export type Moe4AllSettingsProps = { close(): void } &
   PropsLocale<'settings.moe4all'> &
   Moe4AllSettingsFace
 type Tab = 'run' | 'engines' | 'diagnostics'
@@ -282,9 +283,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
               value={e.setup.parallel}
               onChange={(event) => w.setup({ parallel: Number(event.target.value) })}
             >
-              {[...new Set([1, 2, 4, 8, e.setup.parallel])]
-                .sort((a, b) => a - b)
-                .map((value) => (
+              {PARALLEL_OPTIONS.map((value) => (
                   <option key={value} value={value}>
                     {value}
                   </option>
@@ -959,5 +958,37 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
         </Dialog>
       )}
     </div>
+  )
+}
+
+export function StandaloneMoe4AllSettings({
+  scope,
+  t,
+  pickDirectory,
+  save,
+  close,
+}: {
+  scope: SettingsStore<Config>
+  t: Moe4AllSettingsProps['t']
+  pickDirectory(): Promise<string | null>
+  save(next: Config): Promise<void>
+  close(): void
+}): ReactNode {
+  const useMoe4AllSettings = <S,>(selector: (snapshot: SettingsStoreSnapshot<Config>) => S): S => {
+    const snapshot = useSyncExternalStore(
+      listener => scope.subscribe(listener),
+      () => scope.getSnapshot(),
+      () => scope.getSnapshot(),
+    )
+    return selector(snapshot)
+  }
+  return (
+    <Moe4AllSettings
+      close={close}
+      t={t}
+      pickDirectory={pickDirectory}
+      save={save}
+      useMoe4AllSettings={useMoe4AllSettings}
+    />
   )
 }

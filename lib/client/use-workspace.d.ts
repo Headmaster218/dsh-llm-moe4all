@@ -50,7 +50,7 @@ export declare function useWorkspace(props: Moe4AllSettingsProps): {
     portCandidate: string;
     setPortCandidate: import("react").Dispatch<import("react").SetStateAction<string>>;
     disabled: boolean;
-    snapshot: import("@deepseek-ai/dsh-client-runtime/client").SettingsScopeSnapshot<Config>;
+    snapshot: import("./settings-store.js").SettingsStoreSnapshot<Config>;
     scan: () => Promise<boolean>;
     save: () => Promise<boolean>;
     launch: (force?: boolean, restart?: boolean) => Promise<boolean>;

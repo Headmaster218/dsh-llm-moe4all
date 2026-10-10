@@ -13,9 +13,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dsh-version:
-          - 0.1.1-rc.2
-          - 0.1.5-rc.3
+        include:
+          - dsh-version: 0.1.1-rc.2
+            cordis-version: 4.0.1
+            schemastery-version: 3.18.1
+          - dsh-version: 0.1.5-rc.3
+            cordis-version: 4.0.2
+            schemastery-version: 3.18.2
+          - dsh-version: 0.2.0-rc.2
+            cordis-version: 4.0.4
+            schemastery-version: 3.18.4
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -31,6 +38,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $dshVersion = '${{ matrix.dsh-version }}'
           $dshPackages = @(
+            '@deepseek-ai/cordis@${{ matrix.cordis-version }}'
+            '@deepseek-ai/schemastery@${{ matrix.schemastery-version }}'
             "@deepseek-ai/dsh-client-locale@$dshVersion"
             '@deepseek-ai/dsh-client-runtime@0.1.1-rc.2'
             "@deepseek-ai/dsh-client-ui-settings@$dshVersion"

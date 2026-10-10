@@ -16,14 +16,8 @@
         workingDirectory: ''
         apiKeyEnv: MOE4ALL_API_KEY
         allowRemoteEndpoint: false
-        processNames:
-          - infr.exe
-          - moe4all.exe
-          - infr
-          - moe4all
         minimumFreeRamFraction: 0.5
         minimumFreeVramFraction: 0.5
-        promptWhenBusy: true
         resourceProbeTimeoutMs: 10000
         startupTimeoutMs: 120000
         healthTimeoutMs: 2000

@@ -92,6 +92,21 @@ test('first-run setup requires an MTP head when MTP is enabled', () => {
   }), /MTP head GGUF path/u)
 })
 
+test('concurrent slots are limited to the supported 1-4 choices', () => {
+  assert.equal(parseEngineArguments(['serve', '--parallel', '3', 'model.gguf']).parallel, 3)
+  assert.equal(parseEngineArguments(['serve', '--parallel', '8', 'model.gguf']).parallel, 4)
+  assert.throws(() => buildEngineArguments({
+    model: 'model.gguf',
+    host: '127.0.0.1',
+    port: 8080,
+    contextWindow: 1024,
+    maxTokens: 1024,
+    parallel: 5,
+    profile: 'conservative',
+    mtp: false,
+  }), /between 1 and 4/u)
+})
+
 test('saved engine arguments round-trip into the unified settings editor', () => {
   const arguments_ = buildEngineArguments({
     model: 'D:\\Models\\chat.gguf',
