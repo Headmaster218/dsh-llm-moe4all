@@ -32,27 +32,56 @@ test('stale Git dependency repair is scoped and byte-restorable', { skip: proces
     const result = spawnSync('powershell.exe', [
       '-NoLogo',
       '-NoProfile',
-      '-NonInteractive',
       '-File',
       join(testDirectory, 'release-installer-repair.ps1'),
       '-Installer',
       fileURLToPath(new URL('../installer/install-plugin.ps1', import.meta.url)),
       '-Root',
       root,
-    ], { encoding: 'utf8' })
+    ], { encoding: 'utf8', input: '2\n', timeout: 15_000 })
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
     assert.match(result.stdout, /repair and rollback: OK/u)
+    assert.match(result.stdout, /target and launcher selection: OK/u)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
 })
 
-test('README install links work for prerelease-only repositories', async () => {
+test('README install links offer the stable ZIP and a releases fallback', async () => {
   const english = await read('../README.md')
   const chinese = await read('../README.zh.md')
 
   for (const readme of [english, chinese]) {
     assert.match(readme, /https:\/\/github\.com\/Headmaster218\/dsh-llm-moe4all\/releases/u)
+    assert.match(readme, /\/releases\/download\/release-0\.2\.0\/dsh-llm-moe4all-windows\.zip/u)
     assert.doesNotMatch(readme, /\/releases\/latest\/download\//u)
   }
+})
+
+test('release publication waits for reusable compatibility CI and validates assets', async () => {
+  const release = await read('../.github/workflows/release.yml')
+  const ci = await read('../.github/workflows/ci.yml')
+  assert.match(release, /uses: \.\/\.github\/workflows\/ci\.yml/u)
+  assert.match(release, /needs: validation/u)
+  assert.match(release, /check-release\.ps1/u)
+  assert.match(release, /release-notes\.mjs/u)
+  assert.match(release, /--notes-file/u)
+  assert.match(ci, /workflow_call:/u)
+  assert.match(ci, /git diff --exit-code -- lib/u)
+})
+
+test('release scripts parse on Windows PowerShell 5.1 and reject mismatched tags', { skip: process.platform !== 'win32' }, async () => {
+  const builder = fileURLToPath(new URL('../scripts/build-release.ps1', import.meta.url))
+  const checker = fileURLToPath(new URL('../scripts/check-release.ps1', import.meta.url))
+  for (const script of [builder, checker]) {
+    const parsing = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      '$tokens = $null; $errors = $null; [System.Management.Automation.Language.Parser]::ParseFile($env:M4A_TEST_SCRIPT, [ref]$tokens, [ref]$errors) | Out-Null; if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }',
+    ], { encoding: 'utf8', timeout: 10_000, env: { ...process.env, M4A_TEST_SCRIPT: script } })
+    assert.equal(parsing.status, 0, parsing.stdout + parsing.stderr)
+  }
+  const mismatch = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', builder,
+    '-ExpectedTag', 'release-999.0.0',
+  ], { encoding: 'utf8', timeout: 10_000 })
+  assert.notEqual(mismatch.status, 0)
+  assert.match(mismatch.stderr, /does not match package version/u)
 })

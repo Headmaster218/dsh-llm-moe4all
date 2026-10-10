@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
+    branches: ['**']
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
@@ -10,6 +12,7 @@ permissions:
 jobs:
   test:
     runs-on: windows-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -71,6 +74,9 @@ jobs:
             }
           }
       - run: npm run check
+      - name: Verify committed build output
+        if: matrix.dsh-version == '0.2.0-rc.2'
+        run: git diff --exit-code -- lib
       - name: Verify official plugin-manager installation
         if: matrix.dsh-version == '0.2.0-rc.2'
         shell: powershell
@@ -89,6 +95,7 @@ jobs:
           $archive = (Resolve-Path -LiteralPath $archive).Path
           $entry = Join-Path $runtime 'node_modules\@deepseek-ai\dsh\lib\bin.js'
           $env:DSH_HOME = $dshHome
+          $env:DSH_AGENTS_HOME = Join-Path $root 'agents'
 
           & node $entry --profile web --dump-config | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Initializing the official DSH web profile failed' }

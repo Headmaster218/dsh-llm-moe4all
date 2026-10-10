@@ -12,6 +12,18 @@ test('package is an installable DSH bundle', async () => {
   assert.ok(manifest.peerDependencies['@deepseek-ai/dsh-host-webserver'])
   assert.match(manifest.engines.dsh, /0\.1\.1-rc\.2/)
   assert.match(manifest.engines.dsh, /0\.1\.5/)
+  assert.match(manifest.engines.dsh, /0\.2\.0-0/)
+})
+
+test('catalog screenshots point to complete repository images', async () => {
+  const screenshots = JSON.parse(await readFile(new URL('../screenshots.json', import.meta.url), 'utf8'))
+  assert.ok(Array.isArray(screenshots) && screenshots.length >= 1 && screenshots.length <= 8)
+  for (const path of screenshots) {
+    assert.equal(typeof path, 'string')
+    assert.ok(!path.startsWith('/') && !path.split('/').includes('..'))
+    const bytes = await readFile(new URL(`../${path}`, import.meta.url))
+    assert.equal(bytes.subarray(1, 4).toString(), 'PNG')
+  }
 })
 
 test('bundle wires the engine manager and leaves the existing DSH adapter in place', async () => {

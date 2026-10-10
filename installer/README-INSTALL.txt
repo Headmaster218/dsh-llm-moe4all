@@ -6,7 +6,8 @@ One-click install (recommended)
 1. Double-click Install-MoE4All-Plugin.cmd.
 2. Select the DSH home you want to modify.
 3. Finish active work, fully exit that DSH instance, then press Enter.
-4. Restart that DSH and open Settings > MoE4All.
+4. Restart that DSH. First-use MoE4All setup opens automatically.
+   If it was dismissed, open Settings > MoE4All.
 
 The installer uses the prebuilt dsh-llm-moe4all.tgz included in this folder.
 It keeps a versioned copy under the target DSH home before adding it to the
@@ -38,4 +39,5 @@ After every bundle install, update, or removal, restart the DSH profile.
 --------
 双击 Install-MoE4All-Plugin.cmd，明确选择要安装到的 DSH 数据目录，再按提示退出该
 DSH。安装器会使用压缩包内的预编译插件，并自动修复旧安装残留的失效 Git 依赖；
-失败时恢复 profile。安装完成后重新启动所选 DSH，再进入“设置 > MoE4All”。
+失败时恢复 profile。安装完成后重新启动所选 DSH，首次配置会自动弹出；
+若主动关闭，可再进入“设置 > MoE4All”。

@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.2.0
+
+- First stable plugin release, with a Windows x86_64 one-click installer.
+- Match manually selected DSH homes to their launcher, or ask explicitly when several unmatched launchers are available.
+- Provide a unified Run page with a local/recommended model library, visible Engine/model download progress, retry, and cancellation.
+- Configure context/output limits, one through four slots, automatic/manual memory profiles, KV quantization and SSD session cache, vision, embeddings, and MTP.
+- Support local managed Engines or existing OpenAI-compatible endpoints, persistent API keys, native DSH provider synchronization, startup output, and managed runtime speeds.
+- Keep manual, prompt-on-startup, and automatic startup distinct; require confirmation for low resources and offer another port on conflicts.
+- Keep plugin and Engine updates separate and preserve existing settings and local model data.
+- Gate GitHub releases on the full compatibility matrix and official packaged-plugin runtime smoke.
+- Generate bilingual installation notes and version-specific download links for each release.
+- Support version-matched `release-<version>` tags as well as `v<version>` tags.
+- Validate package entries, lockfile metadata, publication boundaries, and catalog screenshots.
+- Include third-party icon license notices and document installation-source-specific upgrades and platform limits.
+- Reject misleading loopback-like domain names and bound stalled plugin-update requests.
 - Support both the legacy DSH settings scope and the DSH 0.2 configuration forms API.
 - Open the complete MoE4All setup surface on first use even when DSH restores a non-empty conversation.
 - Limit managed Engine concurrency to one through four slots.

@@ -18,12 +18,14 @@ English documentation: [README.md](README.md)
 
 ### 收录 DSH 插件市场前：Windows 一键安装
 
-1. 打开 [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases)，从最上方的新版本中下载 `dsh-llm-moe4all-windows.zip`。
+1. 直接下载 [0.2.0 Windows 一键安装 ZIP](https://github.com/Headmaster218/dsh-llm-moe4all/releases/download/release-0.2.0/dsh-llm-moe4all-windows.zip)，或打开 [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) 查看后续版本。
 2. 解压并双击 `Install-MoE4All-Plugin.cmd`。
 3. 选择目标 DSH；看到提示后再完成当前任务、彻底退出所选 DSH，然后按回车继续。
 4. 重新启动所选 DSH。插件在首次尚未完成配置时会自动弹出 MoE4All 设置；若主动关闭，可再进入 **设置 > MoE4All**。
 
 安装器会列出能识别到的 DSH 数据目录，并要求用户明确选择。它支持常规 DSH Desktop、正在运行的源码版 DSH，也支持手动输入 `DSH_HOME`。随后，安装器会把压缩包内已经预编译好的插件保存到所选 DSH 的数据目录，再加入 `web` profile。它不会在安装时拉取 GitHub 源码或执行构建，也不需要管理员权限。
+
+手动输入的数据目录优先使用与之匹配的已探测启动器；找不到匹配项且存在多个启动器时，还会要求选择启动器，不会直接使用第一个。
 
 如果旧版 Git 安装在所选 profile 中留下了已经无法访问的提交，安装器会在 pnpm 解析依赖前只替换 `dsh-llm-moe4all` 这一项。安装失败时，原始 `package.json` 和 `pnpm-lock.yaml` 会自动恢复。
 
@@ -45,7 +47,7 @@ Release ZIP 内含预编译的 `dsh-llm-moe4all.tgz`，双击安装默认就使�
 powershell.exe -NoLogo -NoProfile -File .\install-plugin.ps1
 ```
 
-插件进入 DSH 市场前，升级插件的方法是下载新版本的 Windows 安装包并重新运行；市场更新可用后，插件内的更新提示会接管这条引导安装路径。
+ZIP 安装的插件通过下载新 Windows 安装包并重新运行来升级；市场管理的安装在公开更新 API 可用时走市场更新流程。
 
 ## 最快开始使用
 
@@ -56,6 +58,8 @@ powershell.exe -NoLogo -NoProfile -File .\install-plugin.ps1
 
 默认地址为 `http://127.0.0.1:8080/v1`。也可以只连接现有服务，并自行配置 IP、端口和 API key。
 
+引擎自动安装和一键安装器支持 **Windows x86_64**。其他系统可以连接已有的 OpenAI 兼容服务，但不支持自动安装 Engine。引擎控制页面需要从本机环回地址访问 DSH。实时速度来自插件托管引擎的输出；外部服务没有这份日志，不能显示相同的速度信息。
+
 ## 插件自动更新
 
 安装了带公开更新 API 的 `dshmarket` 后，本插件会在 DSH 打开后自动检查自身更新。发现新版本时，右下角会出现不阻塞操作的提示，并提供进度、失败重试以及正确的刷新或重启按钮。
@@ -65,13 +69,15 @@ powershell.exe -NoLogo -NoProfile -File .\install-plugin.ps1
 - 这里只更新 `dsh-llm-moe4all`；Engine 版本仍在 **设置 > MoE4All > 引擎** 中单独管理。
 - 有 Agent 正在运行时，DSH Market 可能要求任务结束后再更新，避免运行中替换插件文件。
 
-手动更新命令：
+npm 安装的插件可用以下命令更新（须先发布 npm 包）：
 
 ```powershell
 dsh plugin --profile web update dsh-llm-moe4all
 ```
 
 Bundle 更新后需要重启 DSH profile。
+
+ZIP 安装器使用固定版本的本地 `.tgz`，上述命令不会替你下载新的本地压缩包。这种安装方式应下载新 ZIP 并重新运行安装器，选择同一个 DSH 数据目录。仅仅被市场收录，不代表已有的本地文件依赖会自动转成市场管理的依赖。
 
 ## 禁用和卸载
 
@@ -87,8 +93,9 @@ dsh plugin --profile web remove dsh-llm-moe4all
 
 - 已验证 DSH `0.1.1-rc.2`（DSH Desktop `0.6.3`）、DSH `0.1.5-rc.3` 和新官方 DSH `0.2.0-rc.2` 版本线。
 - manifest 显式允许已知的 DSH `0.1.1` 到 `0.1.7` 预发布版本线，以及 `0.2.0` 预发布/正式版本线。
-- 独立安装的 DSH 需要 Node.js 20 或更高版本。
-- 每次 push 和 PR 都会执行构建、测试和 npm dry-pack。
+- 本插件需要 **Node.js 20.3.0 或更高版本**；DSH 自身可能要求更高版本。构建使用 `.node-version` 和 `package.json` 中固定的 Node/npm。
+- CI 检查上述三条已验证版本线；官方 `0.2.0-rc.2` 测试实际安装打包后的插件，检查浏览器鉴权、插件控制路由和原生 Provider 模型发现，不载入 GPU 模型。
+- manifest 允许的其他中间版本以及非 Windows 系统，不等于已经做过额外的端到端验证。
 
 ## 配置
 
@@ -110,7 +117,9 @@ dsh plugin --profile web remove dsh-llm-moe4all
       - D:\Models\model.gguf
 ```
 
-`MOE4ALL_ENGINE` 环境变量也可以指定可执行文件。非环回地址必须显式开启，而且只能连接，不能触发本地进程启动。API key 通过 DSH credentials 保存，不写进插件普通配置。
+`MOE4ALL_ENGINE` 环境变量也可以指定可执行文件。远程端点需要 `allowRemoteEndpoint: true`；插件不会在另一台机器上启动引擎。本地托管引擎可以明确配置为监听本机局域网地址或 `0.0.0.0`，非环回监听使用持久化 API key。API key 通过 DSH credentials 保存，不写进插件普通配置。
+
+启动行为分为**手动启动、打开 DSH 时询问、自动启动**。资源不足或无法取得资源数据时仍须确认；端口冲突时提供空闲端口，不会停掉别人的服务。默认情况下，卸载/禁用插件或退出 DSH 会停止插件自己启动的引擎（`stopOnUnload: true`），不会停止外部服务。
 
 ## 权限与数据
 
@@ -129,7 +138,7 @@ dsh plugin --profile web remove dsh-llm-moe4all
 
 - **安装后找不到插件：** 完整重启 DSH profile，并在 **Plugins/插件** 中确认 `dsh-llm-moe4all` 已启用。
 - **安装脚本找不到 DSH：** 安装 DSH Desktop，或把 `dsh` 加入 `PATH`，再重试。失败时脚本会显示手动命令。
-- **一直没有更新提示：** 安装或更新 `dshmarket`；没有公开更新 API 时使用上面的手动更新命令。
+- **一直没有更新提示：** 安装或更新 `dshmarket`；没有公开更新 API 时，按上述安装来源对应的方法升级。
 - **Engine 启动失败：** 打开 **设置 > MoE4All > 诊断** 查看启动输出。配置端口被占用或 RAM/VRAM 空闲不足时，需要确认继续或改用其他端口；插件不会因为其他无关的本地推理进程而阻止启动。
 - **需要回滚：** 优先使用 DSH Market 提供的回滚按钮；也可以手动安装已知版本或 tag 后重启 profile。
 
@@ -138,16 +147,16 @@ dsh plugin --profile web remove dsh-llm-moe4all
 ## 开发与发布
 
 ```powershell
-npm install
+npm ci
 npm run check
 ```
 
-仓库提交了编译后的 `lib/`，因此 GitHub 安装不需要在安装期批准构建脚本。推送 Release tag 后，CI 会再次检查，生成预编译 `.tgz`、Windows 一键安装 ZIP 和 SHA-256 校验文件，并创建 GitHub Release。
+仓库提交了编译后的 `lib/`，因此 GitHub 安装不需要在安装期批准构建脚本。支持 `v<package-version>` 和 `release-<package-version>` 两种标签，必须与 `package.json` 完全一致。Release 会等待兼容性矩阵和官方安装测试通过，再生成预编译 `.tgz`、Windows 一键安装 ZIP 和 SHA-256 校验文件。预发布版本会标记为 prerelease；此流程**不会自动发布 npm 包**。
 
-仓库已经声明 `dsh.bundle`，带有 `dsh-plugin` topic，适合收录在 `model` 分类。提交收录时应指向仓库根目录，描述只陈述本仓库实际实现的本地 MoE4All Provider 和 Engine 管理能力。
+模块划分、验证方式和可以直接用于收录 PR 的条目见 [维护与发布说明](docs/maintaining.md)。原始完整截图已在 [screenshots.json](screenshots.json) 声明；发版和插件市场收录是两件独立的事。
 
 ## 许可与安全
 
-Apache-2.0，详见 [LICENSE](LICENSE) 和 [NOTICE](NOTICE)。
+Apache-2.0，详见 [LICENSE](LICENSE)、[NOTICE](NOTICE) 和 [第三方许可](THIRD-PARTY-NOTICES.txt)。
 
 普通问题请提交到 [GitHub Issues](https://github.com/Headmaster218/dsh-llm-moe4all/issues)，不要公开凭据或私有数据。安全问题优先使用 GitHub 的私密漏洞报告入口；若该入口不可用，请先通过 GitHub 私下联系维护者，不要直接公开漏洞细节。
