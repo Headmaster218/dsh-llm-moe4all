@@ -78,7 +78,7 @@ jobs:
         if: matrix.dsh-version == '0.2.0-rc.2'
         run: git diff --exit-code -- lib
       - name: Verify official plugin-manager installation
-        if: matrix.dsh-version == '0.2.0-rc.2'
+        if: matrix.dsh-version == '0.1.1-rc.2' || matrix.dsh-version == '0.2.0-rc.2'
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -89,7 +89,7 @@ jobs:
           $dshHome = Join-Path $root 'home'
           New-Item -ItemType Directory -Path $runtime, $dshHome -Force | Out-Null
 
-          & npm install --prefix $runtime --no-audit --no-fund '@deepseek-ai/dsh@0.2.0-rc.2'
+          & npm install --prefix $runtime --no-audit --no-fund '@deepseek-ai/dsh@${{ matrix.dsh-version }}'
           if ($LASTEXITCODE -ne 0) { throw 'Installing the official DSH runtime failed' }
 
           $archive = (& npm pack --ignore-scripts --json | ConvertFrom-Json).filename
@@ -107,3 +107,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'The installed plugin failed DSH config composition' }
           & node scripts/smoke-official-dsh.mjs $entry $dshHome
           if ($LASTEXITCODE -ne 0) { throw 'The installed plugin failed the official DSH runtime smoke test' }
+          $updateHome = Join-Path $root 'release-update-home'
+          & node scripts/smoke-plugin-release-update.mjs $entry $updateHome $archive
+          if ($LASTEXITCODE -ne 0) { throw 'The GitHub Release self-update runtime smoke failed' }
