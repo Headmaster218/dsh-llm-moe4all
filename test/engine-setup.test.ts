@@ -3,6 +3,10 @@ import { test } from 'node:test'
 
 import { buildEngineArguments, parseEngineArguments } from '../src/client/engine-setup.js'
 
+test('first-run setup defaults to two concurrent slots', () => {
+  assert.equal(parseEngineArguments([]).parallel, 2)
+})
+
 test('first-run setup keeps conservative engine defaults automatic', () => {
   assert.deepEqual(buildEngineArguments({
     model: 'D:\\Models\\model.gguf',
