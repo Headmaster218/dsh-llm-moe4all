@@ -103,6 +103,14 @@ function safeTag(tag: string): string {
   return value
 }
 
+function localPathInput(input: string): string {
+  const value = input.trim()
+  if (value.length >= 2 && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))) {
+    return value.slice(1, -1).trim()
+  }
+  return value
+}
+
 async function responseBytes(response: Response, label: string): Promise<Uint8Array> {
   if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`)
   return new Uint8Array(await response.arrayBuffer())
@@ -112,7 +120,9 @@ async function expandArchiveWithPowerShell(archive: string, destination: string,
   if (process.platform !== 'win32') throw new Error('Automatic MoE4All installation currently supports Windows x86_64 only.')
   const script = [
     "$ErrorActionPreference = 'Stop'",
-    'Expand-Archive -LiteralPath $env:MOE4ALL_ARCHIVE -DestinationPath $env:MOE4ALL_DESTINATION -Force',
+    '[Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)',
+    'Add-Type -AssemblyName System.IO.Compression.FileSystem',
+    '[IO.Compression.ZipFile]::ExtractToDirectory($env:MOE4ALL_ARCHIVE, $env:MOE4ALL_DESTINATION)',
   ].join('; ')
   await new Promise<void>((resolveRun, reject) => {
     const child = spawn('powershell.exe', [
@@ -144,7 +154,7 @@ async function expandArchiveWithPowerShell(archive: string, destination: string,
         return
       }
       if (code === 0) resolveRun()
-      else reject(new Error(`Expand-Archive failed (${String(code)}): ${stderr.trim()}`))
+      else reject(new Error(`Archive extraction failed (${String(code)}): ${stderr.trim()}`))
     })
   })
 }
@@ -467,8 +477,9 @@ export class EngineReleaseManager {
 
   installFromLocal(input: string): Promise<InstalledEngine> {
     return this.runInstall(async (signal) => {
-      if (input.trim() === '') throw new Error('Enter a ZIP, extracted directory, or infr.exe path.')
-      const path = resolve(input.trim())
+      const localPath = localPathInput(input)
+      if (localPath === '') throw new Error('Enter a ZIP, extracted directory, or infr.exe path.')
+      const path = resolve(localPath)
       this.setProgress(progress('checking', 0, undefined, 'Checking the local engine path...'))
       let details
       try {

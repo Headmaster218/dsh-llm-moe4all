@@ -18,6 +18,7 @@ export declare const ENGINE_PATHS: {
     readonly modelLibrary: "/api/moe4all/model-library";
     readonly validateModels: "/api/moe4all/validate-models";
     readonly pickModelFile: "/api/moe4all/pick-model-file";
+    readonly pickEngineFile: "/api/moe4all/pick-engine-file";
     readonly modelCatalog: "/api/moe4all/model-catalog";
     readonly modelDownload: "/api/moe4all/model-download";
     readonly cancelModelDownload: "/api/moe4all/model-download-cancel";

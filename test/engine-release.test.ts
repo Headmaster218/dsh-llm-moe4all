@@ -133,6 +133,22 @@ test('a manually downloaded or extracted engine can be adopted without copying i
   }
 })
 
+test('a pasted local engine path may be wrapped in matching quotes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'moe4all-release-quoted-'))
+  const local = await mkdtemp(join(tmpdir(), 'moe4all-local-quoted-'))
+  try {
+    const executable = join(local, 'infr.exe')
+    await writeFile(executable, 'fake')
+    const manager = new EngineReleaseManager(root)
+    const installed = await manager.installFromLocal(`"${executable}"`)
+    assert.equal(installed.executable, executable)
+    assert.equal(installed.workingDirectory, local)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+    await rm(local, { recursive: true, force: true })
+  }
+})
+
 test('managed engine versions can be enumerated and only inactive versions can be deleted', async () => {
   const root = await mkdtemp(join(tmpdir(), 'moe4all-versions-test-'))
   try {

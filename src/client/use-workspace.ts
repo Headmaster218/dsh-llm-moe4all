@@ -310,6 +310,11 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
       }
     })
   }
+  async function pickEngineFile() {
+    let selected: string | undefined
+    await run('engine-picker', async () => { selected = await api.pickEngineFile() })
+    return selected
+  }
   const checkUpdates = () =>
     run('updates', async () => {
       const next = await api.fetchReleaseStatus(true)
@@ -482,6 +487,7 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
     regenerateApiKey,
     selectEngine,
     install,
+    pickEngineFile,
     checkUpdates,
     removeVersion,
     stopInstall,

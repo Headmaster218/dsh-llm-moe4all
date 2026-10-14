@@ -61,6 +61,7 @@ export declare function useWorkspace(props: Moe4AllSettingsProps): {
     regenerateApiKey: () => Promise<boolean>;
     selectEngine: (engine: InstalledEngine) => void;
     install: (localPath?: string) => Promise<void>;
+    pickEngineFile: () => Promise<string | undefined>;
     checkUpdates: () => Promise<boolean>;
     removeVersion: (engine: InstalledEngine) => Promise<boolean>;
     stopInstall: () => Promise<boolean>;
