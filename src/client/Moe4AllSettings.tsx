@@ -93,7 +93,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
     dialog?.classList.add('m4a-host-dialog')
     options?.classList.add('m4a-host-options')
     // Older DSH shells mount settings inside a fading sidebar stacking context.
-    if (overlay && 'showPopover' in overlay) {
+    if (overlay && !overlay.hasAttribute('data-dsh-settings-portal') && 'showPopover' in overlay) {
       overlay.classList.add('m4a-host-overlay')
       overlay.setAttribute('popover', 'manual')
       overlay.showPopover()
@@ -395,7 +395,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
           </div>
           <div>
             <h2>MoE4All</h2>
-            <span>Local inference</span>
+            <span>{t('localInference')}</span>
           </div>
         </div>
         <div

@@ -1,4 +1,5 @@
 declare const copy: {
+    readonly localInference: readonly ["Local inference", "本地推理"];
     readonly runTab: readonly ["Run", "运行"];
     readonly parallel: readonly ["Concurrent slots", "并发会话数"];
     readonly modelsTab: readonly ["Model library", "模型库"];
