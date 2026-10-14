@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0-alpha.20
+
+- Use the MoE4All desktop-owned model picker when the integrated Agent supplies its authenticated loopback bridge.
+- Default integrated Agent model downloads to its stable `models` directory instead of a version-specific DSH home.
+- Classify Engine startup failures and show resource-specific next steps, including a one-click 1-slot retry when appropriate.
+
 ## 0.2.0-alpha.19
 
 - Ask which DSH home to modify instead of silently choosing the first detected installation.

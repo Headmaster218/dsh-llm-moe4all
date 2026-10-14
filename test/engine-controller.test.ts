@@ -6,6 +6,7 @@ import { test } from 'node:test'
 
 import {
   EngineController,
+  diagnoseEngineStartup,
   endpointFromConfig,
   probeHealth,
   runtimeLogFilter,
@@ -67,6 +68,27 @@ test('managed output capture keeps server metrics visible under restrictive host
   assert.equal(runtimeLogFilter('warn'), 'warn,infr_server=info')
   assert.equal(runtimeLogFilter('warn,infr_server=warn'), 'warn,infr_server=warn,infr_server=info')
   assert.equal(runtimeLogFilter('warn,infr_server=debug'), 'warn,infr_server=debug')
+})
+
+test('startup diagnostics separate resource, model and driver failures', () => {
+  const vram = diagnoseEngineStartup('engine exited', [
+    'LlmRuntime cannot fit 2669936640 contiguous bytes in its frozen arena corridor',
+  ])
+  assert.equal(vram.code, 'vram')
+  assert.equal(vram.canRetryWithOneSlot, true)
+  assert.match(vram.suggestions.join(' '), /1 concurrent slot/)
+
+  const ram = diagnoseEngineStartup('engine exited', [
+    'explicit MoE RAM budget exceeds the current Windows commit headroom',
+  ])
+  assert.equal(ram.code, 'ram')
+
+  const model = diagnoseEngineStartup('failed to open model GGUF: no such file', [])
+  assert.equal(model.code, 'model')
+  assert.equal(model.canRetryWithOneSlot, false)
+
+  const vulkan = diagnoseEngineStartup('Vulkan physical device failed: VK_ERROR_DEVICE_LOST', [])
+  assert.equal(vulkan.code, 'vulkan')
 })
 
 test('connect mode reuses a healthy engine', async () => {

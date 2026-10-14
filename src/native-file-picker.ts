@@ -5,6 +5,37 @@ interface PickerCommand {
   arguments: string[]
 }
 
+interface DesktopPickerResponse {
+  path?: unknown
+}
+
+function desktopBridge(): URL | undefined {
+  const value = process.env.MOE4ALL_DESKTOP_BRIDGE?.trim()
+  const token = process.env.MOE4ALL_DESKTOP_TOKEN?.trim()
+  if (!value || !token) return undefined
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1') return undefined
+    return url
+  } catch {
+    return undefined
+  }
+}
+
+async function pickFromDesktopBridge(): Promise<string | undefined> {
+  const bridge = desktopBridge()
+  if (bridge === undefined) return undefined
+  const response = await fetch(new URL('/pick-model', bridge), {
+    method: 'POST',
+    headers: { 'X-MoE4All-Token': process.env.MOE4ALL_DESKTOP_TOKEN! },
+  })
+  if (!response.ok) throw new Error(`MoE4All desktop model picker failed (${String(response.status)}).`)
+  const body = await response.json() as DesktopPickerResponse
+  if (body.path === null || body.path === undefined || body.path === '') return undefined
+  if (typeof body.path !== 'string') throw new Error('MoE4All desktop model picker returned an invalid path.')
+  return body.path
+}
+
 function pickerCommand(): PickerCommand | undefined {
   if (process.platform === 'win32') {
     const script = [
@@ -36,10 +67,11 @@ function pickerCommand(): PickerCommand | undefined {
 }
 
 export function nativeFilePickerAvailable(): boolean {
-  return pickerCommand() !== undefined
+  return desktopBridge() !== undefined || pickerCommand() !== undefined
 }
 
 export async function pickGgufFile(): Promise<string | undefined> {
+  if (desktopBridge() !== undefined) return pickFromDesktopBridge()
   const command = pickerCommand()
   if (command === undefined) throw new Error('A native model file picker is not available on this platform.')
   return new Promise((resolvePick, reject) => {

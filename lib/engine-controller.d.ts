@@ -61,7 +61,15 @@ export interface EngineRuntimeStatus {
     suggestedPort?: number;
     startupStartedAt?: string;
     startupLines?: string[];
+    diagnostic?: EngineStartupDiagnostic;
     metrics?: EngineRuntimeMetrics;
+}
+export type EngineStartupDiagnosticCode = 'vram' | 'ram' | 'context' | 'ubatch' | 'model' | 'vulkan' | 'port' | 'timeout' | 'unknown';
+export interface EngineStartupDiagnostic {
+    code: EngineStartupDiagnosticCode;
+    summary: string;
+    suggestions: string[];
+    canRetryWithOneSlot: boolean;
 }
 export interface EngineStartResult {
     ok: boolean;
@@ -94,6 +102,7 @@ export declare const DEFAULT_CONFIG: {
     readonly logOutput: true;
 };
 export declare function runtimeLogFilter(value: string | undefined): string | undefined;
+export declare function diagnoseEngineStartup(message: string, startupLines: string[]): EngineStartupDiagnostic;
 type ResolvedEngineConfig = {
     [Key in keyof Required<EngineConfig>]: Required<EngineConfig>[Key];
 };

@@ -87,7 +87,26 @@ export interface EngineRuntimeStatus {
   suggestedPort?: number
   startupStartedAt?: string
   startupLines?: string[]
+  diagnostic?: EngineStartupDiagnostic
   metrics?: EngineRuntimeMetrics
+}
+
+export type EngineStartupDiagnosticCode =
+  | 'vram'
+  | 'ram'
+  | 'context'
+  | 'ubatch'
+  | 'model'
+  | 'vulkan'
+  | 'port'
+  | 'timeout'
+  | 'unknown'
+
+export interface EngineStartupDiagnostic {
+  code: EngineStartupDiagnosticCode
+  summary: string
+  suggestions: string[]
+  canRetryWithOneSlot: boolean
 }
 
 export interface EngineStartResult {
@@ -130,6 +149,69 @@ export function runtimeLogFilter(value: string | undefined): string | undefined 
     return current
   }
   return `${current},infr_server=info`
+}
+
+export function diagnoseEngineStartup(message: string, startupLines: string[]): EngineStartupDiagnostic {
+  const evidence = `${message}\n${startupLines.join('\n')}`
+  const diagnostic = (
+    code: EngineStartupDiagnosticCode,
+    summary: string,
+    suggestions: string[],
+    canRetryWithOneSlot = false,
+  ): EngineStartupDiagnostic => ({ code, summary, suggestions, canRetryWithOneSlot })
+  if (/(?:address already in use|eaddrinuse|port .* in use)/iu.test(evidence)) {
+    return diagnostic('port', 'The Engine listen port is already occupied.', [
+      'Choose an unused port, or stop the service that currently owns this port.',
+    ])
+  }
+  if (/(?:cannot fit|out of device memory|device.*memory|vram|frozen arena|largest_gap|memory heap)/iu.test(evidence)) {
+    return diagnostic('vram', 'The Engine could not reserve enough usable VRAM for this configuration.', [
+      'Retry with 1 concurrent slot.',
+      'Use the conservative automatic profile, or reduce context and ubatch.',
+      'Close other GPU applications before retrying.',
+    ], true)
+  }
+  if (/(?:commit headroom|system commit|host store|ram budget|not enough memory|paging file|virtual memory)/iu.test(evidence)) {
+    return diagnostic('ram', 'The Engine could not reserve enough system RAM or Windows commit.', [
+      'Retry with 1 concurrent slot.',
+      'Close memory-heavy applications or increase the Windows page file.',
+      'Use the conservative automatic profile or a smaller RAM budget.',
+    ], true)
+  }
+  if (/(?:kv cache|context window|context.*(?:too large|capacity|overflow)|requested_tokens)/iu.test(evidence)) {
+    return diagnostic('context', 'The configured context or KV cache does not fit the available resources.', [
+      'Retry with 1 concurrent slot.',
+      'Reduce the context window, then start the Engine again.',
+    ], true)
+  }
+  if (/(?:ubatch|micro.?batch|batch.*(?:too large|allocation|cannot fit))/iu.test(evidence)) {
+    return diagnostic('ubatch', 'The configured ubatch is too large for the available runtime arena.', [
+      'Reduce ubatch and retry. Automatic configuration can fall back through supported sizes.',
+      'Retry with 1 concurrent slot if multiple KV slots were requested.',
+    ], true)
+  }
+  if (/(?:gguf|model).*(?:not found|no such file|failed to open|invalid|corrupt)|(?:not found|no such file).*(?:gguf|model)/iu.test(evidence)) {
+    return diagnostic('model', 'The selected model file is missing, unreadable, or invalid.', [
+      'Select the first GGUF shard again and verify that every shard is present.',
+      'Avoid moving or renaming model files while the Engine is starting.',
+    ])
+  }
+  if (/(?:vulkan|vk_error|device lost|driver).*(?:failed|error|unsupported|lost)|(?:failed|error).*(?:vulkan|physical device)/iu.test(evidence)) {
+    return diagnostic('vulkan', 'The Vulkan device or driver failed during Engine startup.', [
+      'Verify the selected GPU and update or repair its Vulkan-capable driver.',
+      'Close other GPU workloads, then retry.',
+    ])
+  }
+  if (/(?:did not become healthy|timed? out|timeout)/iu.test(evidence)) {
+    return diagnostic('timeout', 'The Engine did not become ready before the startup timeout.', [
+      'Review the final startup log lines for a stalled model load.',
+      'Retry after closing competing disk, RAM, or GPU workloads.',
+    ])
+  }
+  return diagnostic('unknown', 'The Engine exited before it became ready.', [
+    'Review the startup log below. The final error line usually identifies the failing option or file.',
+    'Retry once after confirming the model and device settings.',
+  ])
 }
 
 type ResolvedEngineConfig = {
@@ -663,6 +745,7 @@ export class EngineController {
     const run = this.start(force).catch((error: unknown) => {
       if (this.abort.signal.aborted) return { ok: false, status: this.statusSnapshot() }
       const message = error instanceof Error ? error.message : String(error)
+      const diagnostic = diagnoseEngineStartup(message, this.startupLines)
       this.logger.error(error instanceof Error ? error : new Error(message))
       return {
         ok: false,
@@ -671,7 +754,8 @@ export class EngineController {
           ready: false,
           canStart: true,
           ...this.startupDetails(),
-          message,
+          message: diagnostic.summary,
+          diagnostic,
         }),
       }
     }).finally(() => {

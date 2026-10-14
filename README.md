@@ -48,6 +48,8 @@ Before the plugin is listed in DSH Market, install a newer plugin release by dow
 
 The default endpoint is `http://127.0.0.1:8080/v1`. Existing servers can be used in connection-only mode, including a custom IP, port, and API key.
 
+Inside the integrated MoE4All Agent, model downloads default to the product's stable `models` directory and the native file chooser is owned by the Agent window. Startup failures are classified into resource, model, port, and Vulkan categories with concrete recovery steps; resource failures can retry with one concurrent slot without changing the two-slot default for machines that support it.
+
 ## Plugin Updates
 
 When `dshmarket` with the public update API is installed, the plugin checks for its own update shortly after DSH opens. An available update appears as a small non-blocking prompt with progress, retry, and the correct refresh or restart action.

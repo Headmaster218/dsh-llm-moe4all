@@ -53,7 +53,24 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
     if (status?.phase === 'port-conflict' && status.suggestedPort !== undefined)
       setPort(String(status.suggestedPort))
   }, [status?.phase, status?.suggestedPort])
-  async function launch(force: boolean, selectedPort?: number) {
+  function oneSlotArguments(arguments_: string[] | undefined): string[] {
+    const next = [...(arguments_ ?? [])]
+    for (let index = 0; index < next.length; index += 1) {
+      if (next[index] === '--parallel') {
+        if (index + 1 < next.length) next[index + 1] = '1'
+        else next.push('1')
+        return next
+      }
+      if (next[index]?.startsWith('--parallel=')) {
+        next[index] = '--parallel=1'
+        return next
+      }
+    }
+    const serve = next.indexOf('serve')
+    next.splice(serve >= 0 ? serve + 1 : 0, 0, '--parallel', '1')
+    return next
+  }
+  async function launch(force: boolean, selectedPort?: number, oneSlot = false) {
     setBusy(true)
     setError('')
     try {
@@ -61,6 +78,7 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
         await scope.set('endpoint', '')
         await scope.set('port', selectedPort)
       }
+      if (oneSlot) await scope.set('arguments', oneSlotArguments(config?.arguments))
       const result = await startEngine(force)
       setStatus(result.status)
       if (result.ok) {
@@ -113,6 +131,14 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
               {t(warning ? 'startAnyway' : conflict ? 'changePortAndStart' : failed ? 'retryStart' : 'startNow')}
             </Button>
           )}
+          {!starting && failed && status.diagnostic?.canRetryWithOneSlot && (
+            <Button
+              icon={RefreshCw}
+              onClick={() => void launch(false, undefined, true)}
+            >
+              {t('retryOneSlot')}
+            </Button>
+          )}
         </>
       }
     >
@@ -131,6 +157,14 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
         </Field>
       )}
       {failed && <p role="alert">{status.message}</p>}
+      {failed && status.diagnostic && (
+        <div>
+          <strong>{t('diagnosticNextSteps')}</strong>
+          <ul>
+            {status.diagnostic.suggestions.map((suggestion) => <li key={suggestion}>{suggestion}</li>)}
+          </ul>
+        </div>
+      )}
       {conflict && status.message && <p>{status.message}</p>}
       {starting && <progress aria-label={t('startingStatus')} />}
       {(starting || failed) && (
