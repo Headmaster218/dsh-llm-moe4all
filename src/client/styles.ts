@@ -194,6 +194,15 @@ export const styles = `
 .m4a-message > span { flex:1; overflow-wrap:anywhere; }
 .m4a-message--error { border-color:var(--m4a-danger); background:color-mix(in srgb,var(--m4a-danger) 6%,transparent); }
 .m4a-message--warning { border-color:#bf8732; background:color-mix(in srgb,#bf8732 6%,transparent); }
+.m4a-startup-diagnostic { display:grid; gap:8px; padding:12px 14px; border-left:3px solid var(--m4a-danger); background:color-mix(in srgb,var(--m4a-danger) 6%,transparent); color:var(--m4a-muted); font-size:12px; line-height:1.55; }
+.m4a-startup-diagnostic > div { display:flex; align-items:center; gap:8px; color:var(--dsw-alias-label-primary,#24272b); }
+.m4a-startup-diagnostic > span { color:var(--m4a-faint); font-weight:600; }
+.m4a-startup-diagnostic ul,.m4a-startup-failure ul { margin:0; padding-left:20px; }
+.m4a-startup-diagnostic li + li,.m4a-startup-failure li + li { margin-top:4px; }
+.m4a-startup-failure { display:grid; gap:12px; min-width:0; }
+.m4a-startup-failure > p { margin:0; color:var(--dsw-alias-label-primary,#24272b); font-weight:600; }
+.m4a-startup-failure > div { display:grid; gap:7px; }
+.m4a-startup-failure > strong { color:var(--m4a-faint); font-size:12px; }
 .m4a-first-install { min-height:410px; display:grid; align-content:center; justify-items:center; gap:18px; padding:45px 20px; text-align:center; }
 .m4a-first-install-mark { display:grid; place-items:center; width:58px; height:58px; border:1px solid var(--m4a-line); border-radius:8px; color:var(--m4a-accent); background:var(--m4a-soft); }
 .m4a-first-install > div:nth-child(2) { display:grid; gap:7px; max-width:480px; }

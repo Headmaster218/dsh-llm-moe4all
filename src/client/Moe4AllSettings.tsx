@@ -83,6 +83,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
   const [advanced, setAdvanced] = useState(false)
   const [copied, setCopied] = useState(false)
   const [clock, setClock] = useState(Date.now())
+  const [dismissedFailure, setDismissedFailure] = useState('')
   useEffect(() => {
     const dialog = root.current?.closest('[role="dialog"]')
     let options = root.current?.parentElement
@@ -142,6 +143,11 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
   const candidatePort = Number(w.portCandidate)
   const candidatePortValid = Number.isInteger(candidatePort) && candidatePort >= 1 && candidatePort <= 65_535
   const output = (w.status?.startupLines ?? []).join('\n')
+  const failure = w.status?.phase === 'error' ? w.status : undefined
+  const failureKey = failure
+    ? [failure.startupStartedAt ?? '', failure.message ?? '', failure.startupLines?.at(-1) ?? ''].join('\0')
+    : ''
+  const failureOpen = failure !== undefined && failureKey !== dismissedFailure
   const engineTask = w.release?.install
   const modelTask = w.download
   const currentDownload = w.catalog.find((item) => item.id === modelTask.modelId)
@@ -587,6 +593,24 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
                 </div>
               )}
               <RuntimeMetrics status={w.status} t={t} />
+              {failure && (
+                <div className="m4a-startup-diagnostic" role="alert">
+                  <div>
+                    <CircleAlert size={18} />
+                    <strong>{failure.diagnostic?.summary ?? failure.message ?? t('startupFailedTitle')}</strong>
+                  </div>
+                  {failure.diagnostic && (
+                    <>
+                      <span>{t('diagnosticNextSteps')}</span>
+                      <ul>
+                        {failure.diagnostic.suggestions.map((suggestion) => (
+                          <li key={suggestion}>{suggestion}</li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              )}
               {ready && (
                 <Field label={t('statusDisplay')}>
                   <select
@@ -926,6 +950,68 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
           {w.status?.reasons?.map((reason) => (
             <p key={reason}>{reason}</p>
           ))}
+        </Dialog>
+      )}
+      {failureOpen && failure && (
+        <Dialog
+          title={t('startupFailedTitle')}
+          closeLabel={t('notNow')}
+          onClose={() => setDismissedFailure(failureKey)}
+          actions={
+            <>
+              <Button onClick={() => setDismissedFailure(failureKey)}>{t('notNow')}</Button>
+              <Button
+                icon={Terminal}
+                onClick={() => {
+                  setDismissedFailure(failureKey)
+                  setTab('diagnostics')
+                }}
+              >
+                {t('diagnosticsTab')}
+              </Button>
+              {failure.diagnostic?.canRetryWithOneSlot && (
+                <Button
+                  icon={RefreshCw}
+                  busy={w.working === 'start'}
+                  onClick={() => {
+                    setDismissedFailure(failureKey)
+                    void w.launchOneSlot()
+                  }}
+                >
+                  {t('retryOneSlot')}
+                </Button>
+              )}
+              <Button
+                kind="primary"
+                icon={RefreshCw}
+                busy={w.working === 'start'}
+                onClick={() => {
+                  setDismissedFailure(failureKey)
+                  void w.launch()
+                }}
+              >
+                {t('retryStart')}
+              </Button>
+            </>
+          }
+        >
+          <div className="m4a-startup-failure">
+            <p role="alert">{failure.diagnostic?.summary ?? failure.message ?? t('failedStatus')}</p>
+            {failure.diagnostic && (
+              <div>
+                <strong>{t('diagnosticNextSteps')}</strong>
+                <ul>
+                  {failure.diagnostic.suggestions.map((suggestion) => (
+                    <li key={suggestion}>{suggestion}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <strong>{t('runtimeOutput')}</strong>
+            <pre className="m4a-log m4a-log--preview">
+              {failure.startupLines?.slice(-20).join('\n') || failure.message || t('noOutput')}
+            </pre>
+          </div>
         </Dialog>
       )}
       {w.portPrompt && (
