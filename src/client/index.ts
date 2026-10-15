@@ -1,4 +1,4 @@
-import { createElement, Fragment } from 'react'
+import { createElement, Fragment, useSyncExternalStore } from 'react'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -68,7 +68,13 @@ function registerSurfaces(ctx: ClientContext, scope: SettingsStore<Config>): voi
     name: 'shell.overlay',
     id: 'moe4all-overlays',
     label: () => 'MoE4All',
-  }, () => createElement(Fragment, null,
+  }, () => {
+    const snapshot = useSyncExternalStore(
+      listener => scope.subscribe(listener),
+      () => scope.getSnapshot(),
+      () => scope.getSnapshot(),
+    )
+    return createElement(Fragment, null,
     createElement(FirstRunSettingsOverlay, {
       scope,
       t: ctx.locale.bind('settings.moe4all'),
@@ -79,10 +85,11 @@ function registerSurfaces(ctx: ClientContext, scope: SettingsStore<Config>): voi
       scope,
       t: ctx.locale.bind('settings.moe4all'),
     }),
-    allowsPluginSelfUpdate(scope.getSnapshot().value) && createElement(PluginUpdateNotice, {
+    allowsPluginSelfUpdate(snapshot.value) && createElement(PluginUpdateNotice, {
       t: ctx.locale.bind('settings.moe4all'),
     }),
-  )))
+    )
+  }))
 
   ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
     name: 'conversation.composer.dock',
