@@ -2,9 +2,11 @@
 
 ## Unreleased
 
-- Integrate the Agent capability center: require download consent for bundled profiles, order the Engine settings after Capabilities, and reject changed confirmed Engine release tags before downloading archives.
+## 0.2.3
 
+- Integrate the Agent capability center: require download consent for bundled profiles, order the Engine settings after Capabilities, and reject changed confirmed Engine release tags before downloading archives.
 - Register chat reasoning controls for Qwen3.5/3.6 and Qwen3.8, dispatch explicit thinking enable/disable and mapped efforts, and repair incomplete saved model capabilities without discarding custom mappings.
+- Keep Agent KV session files in the stable Agent cache instead of version-specific Engine installations, and preserve readable controls across all Agent themes.
 - Integrate the Agent distribution with DSH 0.1/0.2 compatibility and verified standalone plugin updates.
 - Keep bundled plugin updates under Agent ownership, desktop-owned file pickers, stable model storage, and optional first-run Engine bootstrap.
 - Default setup to two concurrent slots while retaining the supported one-through-four choices; expose thinking mode and reasoning effort.

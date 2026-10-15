@@ -20,7 +20,7 @@ The chat model selector also offers reasoning controls for discovered Qwen3.5/3.
 
 ### Before the DSH catalog listing: one-click Windows install
 
-1. Download the [0.2.2 Windows installer ZIP](https://github.com/Headmaster218/dsh-llm-moe4all/releases/download/release-0.2.2/dsh-llm-moe4all-windows.zip), or check [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) for newer versions.
+1. Download the [0.2.3 Windows installer ZIP](https://github.com/Headmaster218/dsh-llm-moe4all/releases/download/release-0.2.3/dsh-llm-moe4all-windows.zip), or check [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) for newer versions.
 2. Extract the ZIP and double-click `Install-MoE4All-Plugin.cmd`.
 3. Select the target DSH. When prompted, finish active work, fully exit that DSH instance, and press Enter.
 4. Restart the selected DSH. On its first unconfigured start, the plugin opens the MoE4All setup automatically. If it was dismissed, open **Settings > MoE4All**.
