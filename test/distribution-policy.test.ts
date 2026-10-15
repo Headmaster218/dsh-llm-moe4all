@@ -28,3 +28,15 @@ test('first-run bootstrap preserves standalone behavior and requires bundle opt-
   assert.equal(shouldBootstrapEngine({ mode: 'connect', bootstrapEngineOnStart: true }), false)
   assert.equal(shouldBootstrapEngine({ executable: 'infr.exe', bootstrapEngineOnStart: true }), false)
 })
+
+test('the Agent capability center requires consent even for old bootstrap-enabled profiles', () => {
+  const previous = process.env.MOE4ALL_CAPABILITY_CENTER
+  try {
+    process.env.MOE4ALL_CAPABILITY_CENTER = '1'
+    assert.equal(shouldBootstrapEngine({ bundledDistribution: true, bootstrapEngineOnStart: true }), false)
+    assert.equal(shouldBootstrapEngine({}), true)
+  } finally {
+    if (previous === undefined) delete process.env.MOE4ALL_CAPABILITY_CENTER
+    else process.env.MOE4ALL_CAPABILITY_CENTER = previous
+  }
+})

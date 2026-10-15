@@ -65,6 +65,7 @@ export interface EngineInstallProgress {
 
 export interface EngineReleaseStatus {
   supported: boolean
+  confirmedReleaseTag?: boolean
   managed: boolean
   installed?: InstalledEngine
   versions: InstalledEngine[]
@@ -406,6 +407,7 @@ export class EngineReleaseManager {
     )
     return {
       supported: true,
+      confirmedReleaseTag: true,
       managed,
       ...(installed === undefined ? {} : { installed }),
       versions,
@@ -442,11 +444,12 @@ export class EngineReleaseManager {
     return this.installPromise
   }
 
-  installLatest(): Promise<InstalledEngine> {
+  installLatest(expectedTag?: string): Promise<InstalledEngine> {
     return this.runInstall(async (signal) => {
       this.setProgress(progress('checking', 0, undefined, 'Checking the latest official release...'))
       const release = await this.latest(true)
       signal.throwIfAborted()
+      if (expectedTag !== undefined && release.tag !== expectedTag) throw new Error('The available engine version changed. Check again before confirming the download.')
       const releasesRoot = join(this.root, 'releases')
       const target = join(releasesRoot, safeTag(release.tag))
       assertInside(this.root, target)

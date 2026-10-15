@@ -199,8 +199,13 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
 
   const handleInstall = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     if (!method(request, response, 'POST') || !fenced(request, response)) return
+    const body = await readJson(request)
+    if (body === undefined || (body.expectedTag !== undefined && (typeof body.expectedTag !== 'string' || !/^[0-9A-Za-z.+-]{1,100}$/u.test(body.expectedTag)))) {
+      writeJson(response, 400, { ok: false, code: 'invalid-body' })
+      return
+    }
     try {
-      void access.releases.installLatest().catch(() => {})
+      void access.releases.installLatest(typeof body.expectedTag === 'string' ? body.expectedTag : undefined).catch(() => {})
       writeJson(response, 202, { ok: true })
     } catch (error) {
       writeJson(response, 500, { ok: false, message: error instanceof Error ? error.message : String(error) })

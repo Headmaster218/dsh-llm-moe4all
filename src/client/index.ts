@@ -58,7 +58,7 @@ function registerSurfaces(ctx: ClientContext, scope: SettingsStore<Config>): voi
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'moe4all',
-    order: 15,
+    order: 20,
     label: () => ctx.locale.bind('settings.moe4all')('nav'),
     locale: 'settings.moe4all',
     inject: injected,

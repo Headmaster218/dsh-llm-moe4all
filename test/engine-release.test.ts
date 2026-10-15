@@ -41,6 +41,21 @@ test('release-page fallback derives the official asset names from the tag', () =
   assert.match(selected.archive.browser_download_url, /release-0\.8\.0\/MoE4All-Windows/u)
 })
 
+test('a changed confirmed release is rejected before any archive download', { skip: process.platform !== 'win32' }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'moe4all-confirmed-release-'))
+  const urls: string[] = []
+  try {
+    const manager = new EngineReleaseManager(root, {
+      async fetch(input) { urls.push(String(input)); return Response.json(release) },
+      async expandArchive() { assert.fail('must not unpack a different release') },
+    })
+    await assert.rejects(manager.installLatest('release-0.7.0'), /version changed/u)
+    assert.equal(urls.length, 1)
+    assert.match(urls[0]!, /releases\/latest/u)
+    assert.equal((await manager.status()).install.stage, 'error')
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
 test('managed installation verifies the release and stores it outside plugin configuration', { skip: process.platform !== 'win32' }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'moe4all-release-test-'))
   try {

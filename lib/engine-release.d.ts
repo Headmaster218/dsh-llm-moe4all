@@ -37,6 +37,7 @@ export interface EngineInstallProgress {
 }
 export interface EngineReleaseStatus {
     supported: boolean;
+    confirmedReleaseTag?: boolean;
     managed: boolean;
     installed?: InstalledEngine;
     versions: InstalledEngine[];
@@ -75,7 +76,7 @@ export declare class EngineReleaseManager {
     status(currentExecutable?: string, force?: boolean): Promise<EngineReleaseStatus>;
     bootstrapLatest(currentExecutable?: string): Promise<EngineBootstrapResult>;
     waitForInstall(): Promise<InstalledEngine | undefined>;
-    installLatest(): Promise<InstalledEngine>;
+    installLatest(expectedTag?: string): Promise<InstalledEngine>;
     installFromLocal(input: string): Promise<InstalledEngine>;
     cancelInstall(): EngineInstallProgress;
     remove(tag: string, currentExecutable?: string): Promise<void>;
