@@ -10,6 +10,8 @@ Chinese documentation: [README.zh.md](README.zh.md)
 
 The same MoE4All page covers Engine status, live slot speed, model selection, automatic profiles, optional capabilities, and advanced settings.
 
+The chat model selector also offers reasoning controls for discovered Qwen3.5/3.6 models (including 35B) and Qwen3.8 FlashNext. Qwen3.5/3.6 exposes Off, Low, Medium, High, Xhigh, and Max; strength uses the Engine's Qwen35 prompt-instruction mapping, so the Engine must include that support. FlashNext exposes Off, Low, Medium, and Xhigh, matching its native template. Off sends `chat_template_kwargs.enable_thinking=false`, not an empty effort. A route containing only these recognized models defaults to Medium unless a provider default was customized. Rediscovery adds missing choices while retaining custom effort mappings and unrelated compatibility settings; other models are not assigned these capabilities by guesswork.
+
 ![MoE4All runtime status](https://raw.githubusercontent.com/Headmaster218/dsh-llm-moe4all/main/docs/screenshots/runtime-status.png)
 
 <img src="https://raw.githubusercontent.com/Headmaster218/dsh-llm-moe4all/main/docs/screenshots/model-settings.png" alt="MoE4All model and runtime settings" width="640">

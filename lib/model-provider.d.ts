@@ -27,9 +27,19 @@ interface ProviderModelProfile {
     contextWindow: number;
     maxTokens: number;
     input: ('text' | 'image')[];
-    reasoningEfforts: false | Record<string, string>;
+    reasoningEfforts: false | Record<string, string | null>;
     compat: {
         supportsDeveloperRole: false;
+        thinkingFormat?: 'chat-template';
+        chatTemplateKwargs?: {
+            enable_thinking: {
+                $var: 'thinking.enabled';
+            };
+            reasoning_effort: {
+                $var: 'thinking.effort';
+                omitWhenOff: true;
+            };
+        };
     };
 }
 interface ProviderProfile {
@@ -43,6 +53,7 @@ interface ProviderProfile {
     compat: {
         supportsDeveloperRole: false;
     };
+    reasoning?: 'medium';
     models: ProviderModelProfile[];
 }
 export declare function discoverModels(endpoint: URL, config?: ModelProviderConfig, parentSignal?: AbortSignal, apiKey?: string): Promise<DiscoveredModel[]>;

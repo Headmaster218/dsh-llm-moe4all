@@ -34,8 +34,15 @@ interface ProviderModelProfile {
   contextWindow: number
   maxTokens: number
   input: ('text' | 'image')[]
-  reasoningEfforts: false | Record<string, string>
-  compat: { supportsDeveloperRole: false }
+  reasoningEfforts: false | Record<string, string | null>
+  compat: {
+    supportsDeveloperRole: false
+    thinkingFormat?: 'chat-template'
+    chatTemplateKwargs?: {
+      enable_thinking: { $var: 'thinking.enabled' }
+      reasoning_effort: { $var: 'thinking.effort', omitWhenOff: true }
+    }
+  }
 }
 
 interface ProviderProfile {
@@ -47,6 +54,7 @@ interface ProviderProfile {
   defaultMaxTokens: number
   defaultInput: ('text' | 'image')[]
   compat: { supportsDeveloperRole: false }
+  reasoning?: 'medium'
   models: ProviderModelProfile[]
 }
 
@@ -76,8 +84,14 @@ function authorizationHeader(apiKeyEnv: string, apiKey?: string): Record<string,
   return value ? { authorization: `Bearer ${value}` } : {}
 }
 
-function isQwen38(id: string): boolean {
-  return /qwen3(?:[.-]?8)/iu.test(id)
+function modelReasoningEfforts(id: string): ProviderModelProfile['reasoningEfforts'] {
+  if (/qwen3[._-]?8(?:\D|$)/iu.test(id)) {
+    return { off: null, low: 'low', medium: 'medium', xhigh: 'xhigh' }
+  }
+  if (/qwen3[._-]?[56](?:\D|$)/iu.test(id)) {
+    return { off: null, low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' }
+  }
+  return false
 }
 
 export async function discoverModels(
@@ -133,16 +147,31 @@ export function providerProfile(
     defaultMaxTokens: maxTokens,
     defaultInput: input,
     compat: { supportsDeveloperRole: false },
-    models: models.map((model) => ({
-      ...model,
-      contextWindow,
-      maxTokens,
-      input,
-      reasoningEfforts: isQwen38(model.id)
-        ? { low: 'low', medium: 'medium', xhigh: 'xhigh' }
-        : false,
-      compat: { supportsDeveloperRole: false },
-    })),
+    // Chat-template dispatch treats an absent effort as off. Match activation's
+    // medium default, but never impose it on an unrelated non-reasoning model.
+    ...(models.length > 0 && models.every(model => modelReasoningEfforts(model.id) !== false)
+      ? { reasoning: 'medium' as const }
+      : {}),
+    models: models.map((model) => {
+      const reasoningEfforts = modelReasoningEfforts(model.id)
+      return {
+        ...model,
+        contextWindow,
+        maxTokens,
+        input,
+        reasoningEfforts,
+        compat: {
+          supportsDeveloperRole: false,
+          ...(reasoningEfforts === false ? {} : {
+            thinkingFormat: 'chat-template' as const,
+            chatTemplateKwargs: {
+              enable_thinking: { $var: 'thinking.enabled' as const },
+              reasoning_effort: { $var: 'thinking.effort' as const, omitWhenOff: true as const },
+            },
+          }),
+        },
+      }
+    }),
   }
 }
 
@@ -158,13 +187,25 @@ function mergeProviderProfile(existing: unknown, generated: ProviderProfile): Re
     return {
       ...old,
       ...model,
-      ...(oldEfforts === undefined ? {} : { reasoningEfforts: oldEfforts }),
-      compat: { ...oldCompat, ...model.compat },
+      ...(oldEfforts === undefined ? {} : {
+        reasoningEfforts: { ...(model.reasoningEfforts || {}), ...oldEfforts },
+      }),
+      compat: {
+        ...oldCompat,
+        ...model.compat,
+        ...(model.compat.chatTemplateKwargs === undefined ? {} : {
+          chatTemplateKwargs: {
+            ...(isRecord(oldCompat.chatTemplateKwargs) ? oldCompat.chatTemplateKwargs : {}),
+            ...model.compat.chatTemplateKwargs,
+          },
+        }),
+      },
     }
   })
   return {
     ...previous,
     ...generated,
+    ...(previous.reasoning === undefined ? {} : { reasoning: previous.reasoning }),
     compat: {
       ...(isRecord(previous.compat) ? previous.compat : {}),
       ...generated.compat,
@@ -265,9 +306,10 @@ export class ModelProviderBridge {
       { op: 'set', path: ['provider'], value: 'moe4all' },
       { op: 'set', path: ['model'], value: model.id },
     ]
-    if (isQwen38(model.id)) {
+    const efforts = modelReasoningEfforts(model.id)
+    if (efforts !== false) {
       const effort = typeof current.reasoningEffort === 'string'
-        && ['low', 'medium', 'xhigh'].includes(current.reasoningEffort)
+        && Object.hasOwn(efforts, current.reasoningEffort)
         ? current.reasoningEffort
         : 'medium'
       operations.push({ op: 'set', path: ['reasoningEffort'], value: effort })

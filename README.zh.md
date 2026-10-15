@@ -10,6 +10,8 @@ English documentation: [README.md](README.md)
 
 同一个 MoE4All 页面内即可查看引擎状态和槽位实时速度，并完成模型选择、自动策略、可选能力与高级参数配置。
 
+聊天模型选择器会为发现的 Qwen3.5/3.6（包括 35B）和 Qwen3.8 FlashNext 提供思考选项。Qwen3.5/3.6 提供关闭、Low、Medium、High、Xhigh 和 Max；强度由引擎的 Qwen35 提示词指令映射实现，需要使用包含该能力的引擎。FlashNext 提供关闭、Low、Medium 和 Xhigh，与其模板原生档位一致。关闭会明确发送 `chat_template_kwargs.enable_thinking=false`，并非发送空强度。仅包含这些已识别模型的提供商默认使用 Medium；已自定义的提供商默认值不变。重新发现模型时会补齐缺失选项，保留自定义强度映射及无关兼容设置，不为未知模型猜测这些能力。
+
 ![MoE4All 运行状态](https://raw.githubusercontent.com/Headmaster218/dsh-llm-moe4all/main/docs/screenshots/runtime-status.png)
 
 <img src="https://raw.githubusercontent.com/Headmaster218/dsh-llm-moe4all/main/docs/screenshots/model-settings.png" alt="MoE4All 模型与运行参数设置" width="640">
