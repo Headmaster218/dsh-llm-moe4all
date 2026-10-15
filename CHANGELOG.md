@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Integrate the Agent distribution with DSH 0.1/0.2 compatibility and verified standalone plugin updates.
+- Keep bundled plugin updates under Agent ownership, desktop-owned file pickers, stable model storage, and optional first-run Engine bootstrap.
+- Default setup to two concurrent slots while retaining the supported one-through-four choices; expose thinking mode and reasoning effort.
+- Preserve startup errors and logs with common adjustment suggestions instead of inferred failure categories or automatic fallback.
+
 ## 0.2.2
 
 - Make Windows installer prompts, DSH selection, installation results, errors, and bundled instructions bilingual in Chinese and English.
@@ -39,6 +44,11 @@
 - Open the complete MoE4All setup surface on first use even when DSH restores a non-empty conversation.
 - Limit managed Engine concurrency to one through four slots.
 - Remove obsolete process-name and busy-prompt defaults.
+## 0.2.0-alpha.20
+
+- Use the MoE4All desktop-owned model picker when the integrated Agent supplies its authenticated loopback bridge.
+- Default integrated Agent model downloads to its stable `models` directory instead of a version-specific DSH home.
+- Classify Engine startup failures and show resource-specific next steps, including a one-click 1-slot retry when appropriate.
 
 ## 0.2.0-alpha.19
 

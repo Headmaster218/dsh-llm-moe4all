@@ -9,7 +9,7 @@ import type { EngineReleaseManager, EngineReleaseStatus } from './engine-release
 import type { ModelDownloadManager } from './model-download.js'
 import type { DiscoveredModel } from './model-provider.js'
 import { discoverLocalModelFiles, discoverModelLibraries, type LocalModelFiles, type SetupModelPaths, validateSetupModelPaths } from './model-files.js'
-import { nativeFilePickerAvailable, pickGgufFile } from './native-file-picker.js'
+import { nativeFilePickerAvailable, pickEngineFile, pickGgufFile } from './native-file-picker.js'
 
 export const ENGINE_PATHS = {
   status: '/api/moe4all/status',
@@ -24,6 +24,7 @@ export const ENGINE_PATHS = {
   modelLibrary: '/api/moe4all/model-library',
   validateModels: '/api/moe4all/validate-models',
   pickModelFile: '/api/moe4all/pick-model-file',
+  pickEngineFile: '/api/moe4all/pick-engine-file',
   modelCatalog: '/api/moe4all/model-catalog',
   modelDownload: '/api/moe4all/model-download',
   cancelModelDownload: '/api/moe4all/model-download-cancel',
@@ -330,6 +331,19 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
     }
   }
 
+  const handlePickEngineFile = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    if (!method(request, response, 'POST') || !fenced(request, response)) return
+    if (!nativeFilePickerAvailable()) {
+      writeJson(response, 501, { ok: false, code: 'picker-unavailable', message: 'A native engine file picker is not available on this platform.' })
+      return
+    }
+    try {
+      writeJson(response, 200, { ok: true, path: await pickEngineFile() })
+    } catch (error) {
+      writeJson(response, 500, { ok: false, code: 'picker-failed', message: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
   const handleModelCatalog = (request: IncomingMessage, response: ServerResponse): void => {
     if (!method(request, response, 'GET') || !fenced(request, response)) return
     writeJson(response, 200, {
@@ -337,7 +351,9 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
       models: access.downloads.catalog(),
       download: access.downloads.status(),
       capabilities: { nativeFilePicker: nativeFilePickerAvailable() },
-      defaultDirectory: join(process.env.DSH_HOME ? resolve(process.env.DSH_HOME) : join(homedir(), '.dsh'), 'moe4all-models'),
+      defaultDirectory: process.env.MOE4ALL_MODELS_DIR
+        ? resolve(process.env.MOE4ALL_MODELS_DIR)
+        : join(process.env.DSH_HOME ? resolve(process.env.DSH_HOME) : join(homedir(), '.dsh'), 'moe4all-models'),
     })
   }
 
@@ -410,6 +426,7 @@ export function makeEngineRoutes(access: EngineRuntimeAccess): WebRoute[] {
     { kind: 'exact', path: ENGINE_PATHS.modelLibrary, handler: handleModelLibrary },
     { kind: 'exact', path: ENGINE_PATHS.validateModels, handler: handleValidateModels },
     { kind: 'exact', path: ENGINE_PATHS.pickModelFile, handler: handlePickModelFile },
+    { kind: 'exact', path: ENGINE_PATHS.pickEngineFile, handler: handlePickEngineFile },
     { kind: 'exact', path: ENGINE_PATHS.modelCatalog, handler: handleModelCatalog },
     { kind: 'exact', path: ENGINE_PATHS.modelDownload, handler: handleModelDownload },
     { kind: 'exact', path: ENGINE_PATHS.cancelModelDownload, handler: handleCancelModelDownload },

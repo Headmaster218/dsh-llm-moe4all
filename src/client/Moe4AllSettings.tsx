@@ -27,6 +27,7 @@ import {
   X,
 } from 'lucide-react'
 import type { Config } from '../index.js'
+import { allowsPluginSelfUpdate } from '../distribution-policy.js'
 import { endpointFromConfig } from '../connection.js'
 import type { InstalledEngine } from '../engine-release.js'
 import type { ModelFileKind } from '../model-files.js'
@@ -41,6 +42,7 @@ import { ApiKeyField } from './ApiKeyField.js'
 import { EngineVersionsView } from './EngineVersionsView.js'
 import { ModelLibraryView, roleIcon, roleLabel } from './ModelLibraryView.js'
 import { RuntimeMetrics } from './RuntimeStatus.js'
+import { startupAdjustmentSuggestions } from './startup-diagnostic.js'
 import { Button, Dialog, Field, IconButton, Toggle, Transfer } from './workspace-ui.js'
 
 export interface Moe4AllSettingsInjected {
@@ -85,6 +87,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
   const [advanced, setAdvanced] = useState(false)
   const [copied, setCopied] = useState(false)
   const [clock, setClock] = useState(Date.now())
+  const [dismissedFailure, setDismissedFailure] = useState('')
   useEffect(() => {
     const dialog = root.current?.closest('[role="dialog"]')
     let options = root.current?.parentElement
@@ -94,7 +97,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
     dialog?.classList.add('m4a-host-dialog')
     options?.classList.add('m4a-host-options')
     // Older DSH shells mount settings inside a fading sidebar stacking context.
-    if (overlay && 'showPopover' in overlay) {
+    if (overlay && !overlay.hasAttribute('data-dsh-settings-portal') && 'showPopover' in overlay) {
       overlay.classList.add('m4a-host-overlay')
       overlay.setAttribute('popover', 'manual')
       overlay.showPopover()
@@ -138,11 +141,17 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
   )
   const currentModel = w.library.models.find((item) => samePath(item.path, e.setup.model))
   const firstEngineSetup = local && !engineSelected
+  const engineInstallFailed = w.release?.install.stage === 'error' || w.release?.install.stage === 'cancelled'
   const needsRestart = owned && (w.dirty || w.status?.pendingChanges || (!ready && !starting))
   const endpoint = endpointFromConfig(e.config)
   const candidatePort = Number(w.portCandidate)
   const candidatePortValid = Number.isInteger(candidatePort) && candidatePort >= 1 && candidatePort <= 65_535
   const output = (w.status?.startupLines ?? []).join('\n')
+  const failure = w.status?.phase === 'error' ? w.status : undefined
+  const failureKey = failure
+    ? [failure.startupStartedAt ?? '', failure.message ?? '', failure.startupLines?.at(-1) ?? ''].join('\0')
+    : ''
+  const failureOpen = failure !== undefined && failureKey !== dismissedFailure
   const engineTask = w.release?.install
   const modelTask = w.download
   const currentDownload = w.catalog.find((item) => item.id === modelTask.modelId)
@@ -388,7 +397,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
           </div>
           <div>
             <h2>MoE4All</h2>
-            <span>Local inference</span>
+            <span>{t('localInference')}</span>
           </div>
         </div>
         <div
@@ -540,13 +549,13 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
               {isInstalling(w.release) ? <RefreshCw size={28} className="m4a-spin" /> : <Package size={28} />}
             </div>
             <div>
-              <h3>{t(isInstalling(w.release) ? 'firstInstallRunning' : 'firstInstallAttention')}</h3>
-              <p>{t(isInstalling(w.release) ? 'firstInstallRunningBody' : 'firstInstallAttentionBody')}</p>
+              <h3>{t(isInstalling(w.release) ? 'firstInstallRunning' : engineInstallFailed ? 'firstInstallAttention' : 'firstInstallChoice')}</h3>
+              <p>{t(isInstalling(w.release) ? 'firstInstallRunningBody' : engineInstallFailed ? 'firstInstallAttentionBody' : 'firstInstallChoiceBody')}</p>
             </div>
             {!isInstalling(w.release) && (
               <div className="m4a-inline">
-                <Button kind="primary" icon={RefreshCw} onClick={() => void w.install()}>
-                  {t('retryDownload')}
+                <Button kind="primary" icon={engineInstallFailed ? RefreshCw : ArrowDownToLine} onClick={() => void w.install()}>
+                  {t(engineInstallFailed ? 'retryDownload' : 'installLatest')}
                 </Button>
                 <Button icon={FolderOpen} onClick={() => setTab('engines')}>
                   {t('useLocalDownload')}
@@ -586,6 +595,21 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
                 </div>
               )}
               <RuntimeMetrics status={w.status} t={t} />
+              {failure && (
+                <div className="m4a-startup-diagnostic" role="alert">
+                  <div>
+                    <CircleAlert size={18} />
+                    <strong>{t('startupFailedTitle')}</strong>
+                  </div>
+                  <p>{t('startupFailedBody')}</p>
+                  <span>{t('startupAdjustmentsTitle')}</span>
+                  <ul>
+                    {startupAdjustmentSuggestions(t).map((suggestion) => (
+                      <li key={suggestion}>{suggestion}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {ready && (
                 <Field label={t('statusDisplay')}>
                   <select
@@ -671,12 +695,12 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
       )}
       {tab === 'diagnostics' && (
         <section className="m4a-diagnostics">
-          <div className="m4a-section-heading">
+          {allowsPluginSelfUpdate(e.config) && <div className="m4a-section-heading">
             <h3>{t('pluginUpdateTitle')}</h3>
             <Button icon={RefreshCw} onClick={() => window.dispatchEvent(new Event(CHECK_PLUGIN_UPDATE_EVENT))}>
               {t('checkPluginUpdates')}
             </Button>
-          </div>
+          </div>}
           <div className="m4a-section-heading">
             <h3>{t('runtimeOutput')}</h3>
             <div className="m4a-inline">
@@ -933,6 +957,54 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
           ))}
         </Dialog>
       )}
+      {failureOpen && failure && (
+        <Dialog
+          title={t('startupFailedTitle')}
+          closeLabel={t('notNow')}
+          onClose={() => setDismissedFailure(failureKey)}
+          actions={
+            <>
+              <Button onClick={() => setDismissedFailure(failureKey)}>{t('notNow')}</Button>
+              <Button
+                icon={Terminal}
+                onClick={() => {
+                  setDismissedFailure(failureKey)
+                  setTab('diagnostics')
+                }}
+              >
+                {t('diagnosticsTab')}
+              </Button>
+              <Button
+                kind="primary"
+                icon={RefreshCw}
+                busy={w.working === 'start'}
+                onClick={() => {
+                  setDismissedFailure(failureKey)
+                  void w.launch()
+                }}
+              >
+                {t('retryStart')}
+              </Button>
+            </>
+          }
+        >
+          <div className="m4a-startup-failure">
+            <p role="alert">{t('startupFailedBody')}</p>
+            <div>
+              <strong>{t('startupAdjustmentsTitle')}</strong>
+              <ul>
+                {startupAdjustmentSuggestions(t).map((suggestion) => (
+                  <li key={suggestion}>{suggestion}</li>
+                ))}
+              </ul>
+            </div>
+            <strong>{t('runtimeOutput')}</strong>
+            <pre className="m4a-log m4a-log--preview">
+              {failure.startupLines?.slice(-20).join('\n') || failure.message || t('noOutput')}
+            </pre>
+          </div>
+        </Dialog>
+      )}
       {w.portPrompt && (
         <Dialog
           title={t('portConflictTitle')}
@@ -961,7 +1033,6 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
               onChange={(event) => w.setPortCandidate(event.target.value)}
             />
           </Field>
-          {w.status?.message && <p>{w.status.message}</p>}
         </Dialog>
       )}
     </div>

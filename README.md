@@ -60,6 +60,8 @@ The default endpoint is `http://127.0.0.1:8080/v1`. Existing servers can be used
 
 Automatic Engine installation and the Windows installer support **Windows x86_64**. Other hosts can connect to an existing OpenAI-compatible service; automatic Engine installation there is not supported. Open DSH through its local loopback address to use Engine controls. Real-time throughput is collected from a plugin-managed Engine's output; an external server does not provide those logs.
 
+Inside the integrated MoE4All Agent, model downloads default to the product's stable `models` directory and the native file chooser is owned by the Agent window. The setup defaults to two concurrent slots. Startup failures preserve the original error and logs, with general suggestions to reduce concurrency, reduce context, switch automatic profiles, or choose a smaller model. Built-in plugin updates belong to the Agent bundle; standalone plugin self-updates remain available outside the bundle.
+
 ## Plugin Updates
 
 The plugin checks shortly after DSH opens and every six hours while its page remains open. Use **Settings > MoE4All > Diagnostics > Check plugin updates** for a manual check. Downloading/installing a plugin update always requires confirmation.

@@ -88,6 +88,32 @@ export function AdvancedOptions({ workspace: w, t }: { workspace: Workspace; t: 
           {argument('--top-p', 'Top P')}
           {argument('--top-k', 'Top K')}
           {argument('--seed', 'Seed')}
+          <Field label={t('thinkingMode')} help={t('thinkingModeHelp')}>
+            <select
+              value={e.setup.thinkingMode}
+              onChange={(event) => w.setup({ thinkingMode: event.target.value as 'default' | 'on' | 'off' })}
+            >
+              <option value="default">{t('modelDefault')}</option>
+              <option value="on">{t('thinkingOn')}</option>
+              <option value="off">{t('thinkingOff')}</option>
+            </select>
+          </Field>
+          <Field label={t('reasoningEffort')} help={t('reasoningEffortHelp')}>
+            <select
+              value={e.setup.reasoningEffort}
+              disabled={e.setup.thinkingMode === 'off'}
+              onChange={(event) => w.setup({
+                reasoningEffort: event.target.value as 'default' | 'low' | 'medium' | 'xhigh' | 'high' | 'max',
+              })}
+            >
+              <option value="default">{t('modelDefault')}</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="xhigh">Xhigh</option>
+              <option value="high">High</option>
+              <option value="max">Max</option>
+            </select>
+          </Field>
         </div>
       </Disclosure>
       <Disclosure title={t('cacheSection')} icon={Database}>

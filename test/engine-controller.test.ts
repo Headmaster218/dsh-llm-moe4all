@@ -226,6 +226,8 @@ test('startup failures retain the engine output for the UI', async () => {
   const result = await controller.requestStart()
   assert.equal(result.ok, false)
   assert.equal(result.status.phase, 'error')
+  assert.match(result.status.message ?? '', /engine exited before becoming ready \(code 7\)/)
+  assert.equal('diagnostic' in result.status, false)
   assert.match(result.status.startupLines?.join('\n') ?? '', /simulated model allocation failure/)
   assert.equal((await controller.refreshStatus()).phase, 'error')
   await controller.dispose()

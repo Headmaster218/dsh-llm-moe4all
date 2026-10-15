@@ -4,6 +4,7 @@ import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 
 import type { Config } from '../index.js'
+import { allowsPluginSelfUpdate } from '../distribution-policy.js'
 import { EngineStartupOverlay } from './EngineStartupOverlay.js'
 import { FirstRunSettingsOverlay } from './Moe4AllOnboarding.js'
 import { Moe4AllSettings, type Moe4AllSettingsInjected } from './Moe4AllSettings.js'
@@ -78,7 +79,7 @@ function registerSurfaces(ctx: ClientContext, scope: SettingsStore<Config>): voi
       scope,
       t: ctx.locale.bind('settings.moe4all'),
     }),
-    createElement(PluginUpdateNotice, {
+    allowsPluginSelfUpdate(scope.getSnapshot().value) && createElement(PluginUpdateNotice, {
       t: ctx.locale.bind('settings.moe4all'),
     }),
   )))

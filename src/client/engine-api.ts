@@ -137,6 +137,14 @@ export async function pickModelFile(): Promise<string | undefined> {
   return result.path
 }
 
+export async function pickEngineFile(): Promise<string | undefined> {
+  const result = await json<{ ok: boolean, path?: string }>('/api/moe4all/pick-engine-file', {
+    method: 'POST',
+    body: '{}',
+  })
+  return result.path
+}
+
 export function fetchModelCatalog(): Promise<ModelCatalogResponse> {
   return json('/api/moe4all/model-catalog')
 }

@@ -117,8 +117,18 @@ export function EngineVersionsView({
               placeholder="D:\MoE4All\infr.exe"
             />
           </Field>
+          {w.nativePicker && (
+            <Button
+              icon={FolderOpen}
+              busy={w.working === 'engine-picker'}
+              disabled={installing}
+              onClick={() => void w.pickEngineFile().then((selected) => { if (selected) setPath(selected) })}
+            >
+              {t('chooseFile')}
+            </Button>
+          )}
           <Button
-            icon={FolderOpen}
+            icon={Package}
             busy={w.working === 'install'}
             disabled={!path.trim() || installing}
             onClick={() => void w.install(path)}

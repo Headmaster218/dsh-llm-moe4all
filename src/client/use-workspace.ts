@@ -152,8 +152,14 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
             ])
             .then(() => {
               const recommended = catalogRef.current.find(item => item.id === model.value.modelId)
-              if (recommended?.kind === 'main' && !live.current?.setup.model && model.value.selectedFile) {
-                selectModel(model.value.selectedFile, 'main')
+              const setup = live.current?.setup
+              const selected = recommended?.kind === 'main' ? setup?.model
+                : recommended?.kind === 'vision' ? setup?.visionModel
+                  : recommended?.kind === 'mtp' ? setup?.mtpModel
+                    : recommended?.kind === 'embedding' ? setup?.embeddingModel
+                      : undefined
+              if (recommended !== undefined && !selected && model.value.selectedFile) {
+                selectModel(model.value.selectedFile, recommended.kind)
               }
             })
             .catch(report)
@@ -303,6 +309,11 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
         await new Promise((resolve) => setTimeout(resolve, 600))
       }
     })
+  }
+  async function pickEngineFile() {
+    let selected: string | undefined
+    await run('engine-picker', async () => { selected = await api.pickEngineFile() })
+    return selected
   }
   const checkUpdates = () =>
     run('updates', async () => {
@@ -476,6 +487,7 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
     regenerateApiKey,
     selectEngine,
     install,
+    pickEngineFile,
     checkUpdates,
     removeVersion,
     stopInstall,

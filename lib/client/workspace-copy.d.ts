@@ -1,4 +1,5 @@
 declare const copy: {
+    readonly localInference: readonly ["Local inference", "本地推理"];
     readonly runTab: readonly ["Run", "运行"];
     readonly parallel: readonly ["Concurrent slots", "并发会话数"];
     readonly modelsTab: readonly ["Model library", "模型库"];
@@ -26,6 +27,8 @@ declare const copy: {
     readonly stepStart: readonly ["Start chatting", "启动使用"];
     readonly firstInstallRunning: readonly ["Preparing the MoE4All engine", "正在准备 MoE4All 引擎"];
     readonly firstInstallRunningBody: readonly ["The official release is downloading and will be configured automatically. You can leave this page open.", "正在下载官方发行版，完成后会自动配置。保持此页面打开即可。"];
+    readonly firstInstallChoice: readonly ["Choose an engine", "选择引擎"];
+    readonly firstInstallChoiceBody: readonly ["Download the official engine, or use a ZIP, folder, or infr.exe already on this computer. The engine will not start until you configure a model.", "可以下载官方引擎，或使用本机已有的 ZIP、目录或 infr.exe。配置模型前不会启动引擎。"];
     readonly firstInstallAttention: readonly ["Engine setup needs attention", "引擎安装需要处理"];
     readonly firstInstallAttentionBody: readonly ["Retry the automatic download, or import a ZIP, folder, or infr.exe you already downloaded.", "可以重试自动下载，或导入已经下载的 ZIP、目录或 infr.exe。"];
     readonly modelEmpty: readonly ["No model selected", "尚未选择模型"];
@@ -66,6 +69,13 @@ declare const copy: {
     readonly networkSection: readonly ["Network & connection", "网络与连接"];
     readonly samplingSection: readonly ["Generation defaults", "生成默认值"];
     readonly temperatureLabel: readonly ["Temperature", "温度"];
+    readonly thinkingMode: readonly ["Thinking mode", "思考模式"];
+    readonly thinkingModeHelp: readonly ["Use the model default, force thinking on, or disable thinking.", "使用模型默认设置、强制开启思考，或关闭思考。"];
+    readonly modelDefault: readonly ["Model default", "模型默认"];
+    readonly thinkingOn: readonly ["Force on", "强制开启"];
+    readonly thinkingOff: readonly ["Off", "关闭思考"];
+    readonly reasoningEffort: readonly ["Reasoning effort", "思考强度"];
+    readonly reasoningEffortHelp: readonly ["Supported levels depend on the selected model.", "可用档位取决于所选模型。"];
     readonly customArguments: readonly ["Additional engine arguments", "额外引擎参数"];
     readonly launchPreview: readonly ["Launch command", "启动命令预览"];
     readonly modelDirectoryLabel: readonly ["Model storage", "模型存放目录"];
@@ -134,6 +144,12 @@ declare const copy: {
     readonly copied: readonly ["Copied", "已复制"];
     readonly refreshStatus: readonly ["Refresh status", "刷新状态"];
     readonly diagnosticSettings: readonly ["Startup & diagnostics", "启动与诊断设置"];
+    readonly startupFailedBody: readonly ["Review the original logs or try the common adjustments below.", "可以查看原始日志，或尝试以下常见调整。"];
+    readonly startupAdjustmentsTitle: readonly ["Common adjustments", "常见调整建议"];
+    readonly startupAdjustParallel: readonly ["Reduce the number of concurrent slots.", "降低并发会话数。"];
+    readonly startupAdjustContext: readonly ["Reduce the context window.", "降低上下文长度。"];
+    readonly startupAdjustProfile: readonly ["Switch to the conservative or aggressive automatic profile.", "切换为稳健自动或激进自动策略。"];
+    readonly startupAdjustModel: readonly ["Choose a smaller model.", "选取更小的模型。"];
     readonly chooseAttachment: readonly ["Choose file", "选择文件"];
     readonly attachmentAuto: readonly ["Detected alongside the model", "已探测到同家族文件"];
     readonly modelSelectedNotice: readonly ["Model selected. Save to apply.", "模型已选用，保存后生效。"];

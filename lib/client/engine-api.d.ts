@@ -34,6 +34,7 @@ export declare function scanModelPath(path: string): Promise<LocalModelFiles>;
 export declare function scanModelLibrary(directories: string[], selectedPaths: string[]): Promise<LocalModelLibrary>;
 export declare function validateModelPaths(paths: SetupModelPaths): Promise<SetupModelPaths>;
 export declare function pickModelFile(): Promise<string | undefined>;
+export declare function pickEngineFile(): Promise<string | undefined>;
 export declare function fetchModelCatalog(): Promise<ModelCatalogResponse>;
 export declare function fetchModelDownload(): Promise<ModelDownloadProgress>;
 export declare function startModelDownload(modelId: string, directory: string): Promise<ModelDownloadProgress>;

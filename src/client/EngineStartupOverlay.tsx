@@ -4,6 +4,7 @@ import type { Config } from '../index.js'
 import type { EngineControlStatus } from '../host-routes.js'
 import { fetchEngineStatus, startEngine } from './engine-api.js'
 import type { SettingsStore } from './settings-store.js'
+import { startupAdjustmentSuggestions } from './startup-diagnostic.js'
 import { Button, Dialog, Field, Toggle, type Translate } from './workspace-ui.js'
 
 export function EngineStartupOverlay({ scope, t }: { scope: SettingsStore<Config>; t: Translate }) {
@@ -116,7 +117,7 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsStore<Config
         </>
       }
     >
-      <p>{t(warning ? 'resourceWarningBody' : conflict ? 'portConflictBody' : starting ? 'startupProgressBody' : 'startupPromptBody')}</p>
+      <p>{t(warning ? 'resourceWarningBody' : conflict ? 'portConflictBody' : starting ? 'startupProgressBody' : failed ? 'startupFailedBody' : 'startupPromptBody')}</p>
       <code>{status.endpoint}</code>
       {warning && status.reasons?.map((reason) => <p key={reason}>{reason}</p>)}
       {conflict && (
@@ -130,8 +131,14 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsStore<Config
           />
         </Field>
       )}
-      {failed && <p role="alert">{status.message}</p>}
-      {conflict && status.message && <p>{status.message}</p>}
+      {failed && (
+        <div>
+          <strong>{t('startupAdjustmentsTitle')}</strong>
+          <ul>
+            {startupAdjustmentSuggestions(t).map((suggestion) => <li key={suggestion}>{suggestion}</li>)}
+          </ul>
+        </div>
+      )}
       {starting && <progress aria-label={t('startingStatus')} />}
       {(starting || failed) && (
         <pre className="m4a-log m4a-log--preview">

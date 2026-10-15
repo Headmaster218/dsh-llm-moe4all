@@ -13,6 +13,7 @@ import { ModelProviderBridge, type ModelProviderConfig, type ProviderSettingsLik
 import { settingsNamespace } from './settings-compat.js'
 import { cliPluginUpdateTarget, desktopPluginCommand, PluginReleaseUpdater, type DesktopPluginInstaller, type PluginUpdateTarget } from './plugin-release-update.js'
 import { makePluginUpdateRoutes } from './plugin-update-routes.js'
+import { allowsPluginSelfUpdate, shouldBootstrapEngine } from './distribution-policy.js'
 
 export const name = 'moe4all-engine'
 export const inject = ['settings', 'credentials']
@@ -23,6 +24,8 @@ export interface Config extends EngineConfig, ModelProviderConfig {
   modelDirectories?: string[]
   modelDirectoriesConfigured?: boolean
   statusDisplay?: 'hover' | 'always' | 'hidden'
+  bundledDistribution?: boolean
+  bootstrapEngineOnStart?: boolean
 }
 
 interface OptionalVolatileSchema {
@@ -65,6 +68,8 @@ export const Config = z.object({
   modelRefreshIntervalMs: editable(z.number().step(1).min(1_000).default(15_000)),
   modelDiscoveryTimeoutMs: editable(z.number().step(1).min(100).default(3_000)),
   statusDisplay: editable(z.union(['hover', 'always', 'hidden']).default('hover')),
+  bundledDistribution: editable(z.boolean().default(false)),
+  bootstrapEngineOnStart: editable(z.boolean().default(false)),
 })
 
 interface ActiveRuntime {
@@ -77,6 +82,7 @@ interface ActiveRuntime {
 interface PluginSettingsScope<T> {
   get(): T
   watch(callback: (next: T, previous: T) => void | Promise<void>): () => void
+  update(patch: object): Promise<void>
 }
 
 interface PluginSettingsLike extends ProviderSettingsLike {
@@ -155,13 +161,6 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
   const releases = new EngineReleaseManager()
   const downloads = new ModelDownloadManager()
   const initialConfig = resolvePluginConfig(config)
-  if (initialConfig.mode !== 'connect' && !initialConfig.executable?.trim()) {
-    void releases.bootstrapLatest().then((result) => {
-      if (result.started) ctx.logger.info('First MoE4All setup: downloading the latest official engine release.')
-    }).catch((error: unknown) => {
-      ctx.logger.error(error instanceof Error ? error : new Error(String(error)))
-    })
-  }
   let source = (): Config => initialConfig
   let active: ActiveRuntime | undefined = startRuntime(ctx, settings, initialConfig, apiKeys)
   let activeSignature = configSignature(initialConfig)
@@ -171,7 +170,8 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
   let disposed = false
   let desktopTarget: PluginUpdateTarget | undefined
   const pluginUpdates = new PluginReleaseUpdater({
-    target: () => ctx.get('desktopProfiles') ? desktopTarget : cliPluginUpdateTarget(),
+    target: () => !allowsPluginSelfUpdate(source()) ? undefined
+      : ctx.get('desktopProfiles') ? desktopTarget : cliPluginUpdateTarget(),
     busy: () => {
       if (active?.controller.ownsProcess || active?.controller.isStarting) return true
       const agents = ctx.get('agents') as { list?(): { status?: string }[] } | undefined
@@ -220,9 +220,11 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
   }
 
   let stopSettingsWatch = () => {}
+  let updateSettings: ((patch: object) => Promise<void>) | undefined
   if (settings.register !== undefined) {
     const settingsScope = settings.register(SETTINGS_NAMESPACE, Config, { base: initialConfig })
     source = () => settingsScope.get()
+    updateSettings = patch => settingsScope.update(patch)
     stopSettingsWatch = settingsScope.watch(scheduleRestart)
     scheduleRestart()
   } else if (settings.configure !== undefined) {
@@ -234,6 +236,23 @@ export function apply(ctx: Context, config: Config): () => Promise<void> {
     )
     const on = ctx.on as unknown as (name: string, callback: () => void) => void
     on.call(ctx, 'loader/volatile-update', scheduleRestart)
+  }
+  const bootstrapConfig = source()
+  if (shouldBootstrapEngine(bootstrapConfig)) {
+    void releases.bootstrapLatest().then(async (result) => {
+      if (result.started) ctx.logger.info('First MoE4All setup: downloading the latest official engine release.')
+      const completed = result.started ? await releases.waitForInstall() : undefined
+      const refreshed = completed === undefined && result.started ? await releases.status() : result.status
+      const installed = completed ?? refreshed.installed ?? refreshed.versions[0]
+      if (disposed || installed === undefined || source().executable?.trim() || source().mode === 'connect' || !updateSettings) return
+      await updateSettings({
+        executable: installed.executable,
+        workingDirectory: installed.workingDirectory,
+      })
+      ctx.logger.info(`First MoE4All setup: selected engine ${installed.tag}.`)
+    }).catch((error: unknown) => {
+      ctx.logger.error(error instanceof Error ? error : new Error(String(error)))
+    })
   }
 
   ctx.inject(['webServer'], (routeCtx: Context) => {

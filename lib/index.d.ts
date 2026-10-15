@@ -11,6 +11,8 @@ export interface Config extends EngineConfig, ModelProviderConfig {
     modelDirectories?: string[];
     modelDirectoriesConfigured?: boolean;
     statusDisplay?: 'hover' | 'always' | 'hidden';
+    bundledDistribution?: boolean;
+    bootstrapEngineOnStart?: boolean;
 }
 export declare const Config: z<Schemastery.ObjectS<NoInfer<{
     mode: z<"connect" | "prompt" | "auto" | "managed", "connect" | "prompt" | "auto" | "managed", "defined">;
@@ -43,6 +45,8 @@ export declare const Config: z<Schemastery.ObjectS<NoInfer<{
     modelRefreshIntervalMs: z<number, number, "defined">;
     modelDiscoveryTimeoutMs: z<number, number, "defined">;
     statusDisplay: z<"hover" | "always" | "hidden", "hover" | "always" | "hidden", "defined">;
+    bundledDistribution: z<boolean, boolean, "defined">;
+    bootstrapEngineOnStart: z<boolean, boolean, "defined">;
 }>>, Schemastery.ObjectT<NoInfer<{
     mode: z<"connect" | "prompt" | "auto" | "managed", "connect" | "prompt" | "auto" | "managed", "defined">;
     protocol: z<"http" | "https", "http" | "https", "defined">;
@@ -74,6 +78,8 @@ export declare const Config: z<Schemastery.ObjectS<NoInfer<{
     modelRefreshIntervalMs: z<number, number, "defined">;
     modelDiscoveryTimeoutMs: z<number, number, "defined">;
     statusDisplay: z<"hover" | "always" | "hidden", "hover" | "always" | "hidden", "defined">;
+    bundledDistribution: z<boolean, boolean, "defined">;
+    bootstrapEngineOnStart: z<boolean, boolean, "defined">;
 }>>, "plain">;
 export declare function resolvePluginConfig(config: Config): Config;
 export declare function apply(ctx: Context, config: Config): () => Promise<void>;
@@ -111,6 +117,8 @@ declare const plugin: {
         modelRefreshIntervalMs: z<number, number, "defined">;
         modelDiscoveryTimeoutMs: z<number, number, "defined">;
         statusDisplay: z<"hover" | "always" | "hidden", "hover" | "always" | "hidden", "defined">;
+        bundledDistribution: z<boolean, boolean, "defined">;
+        bootstrapEngineOnStart: z<boolean, boolean, "defined">;
     }>>, Schemastery.ObjectT<NoInfer<{
         mode: z<"connect" | "prompt" | "auto" | "managed", "connect" | "prompt" | "auto" | "managed", "defined">;
         protocol: z<"http" | "https", "http" | "https", "defined">;
@@ -142,6 +150,8 @@ declare const plugin: {
         modelRefreshIntervalMs: z<number, number, "defined">;
         modelDiscoveryTimeoutMs: z<number, number, "defined">;
         statusDisplay: z<"hover" | "always" | "hidden", "hover" | "always" | "hidden", "defined">;
+        bundledDistribution: z<boolean, boolean, "defined">;
+        bootstrapEngineOnStart: z<boolean, boolean, "defined">;
     }>>, "plain">;
     apply: typeof apply;
 };
