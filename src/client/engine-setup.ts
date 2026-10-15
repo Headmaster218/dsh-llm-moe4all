@@ -1,4 +1,6 @@
 export type EngineAutoProfile = 'conservative' | 'aggressive'
+export type ThinkingMode = 'default' | 'on' | 'off'
+export type ReasoningEffort = 'default' | 'low' | 'medium' | 'xhigh' | 'high' | 'max'
 
 export interface SessionCacheSetup {
   directory: string
@@ -20,6 +22,8 @@ export interface EngineSetupValues {
   parallel: number
   profile: EngineAutoProfile
   mtp: boolean
+  thinkingMode?: ThinkingMode
+  reasoningEffort?: ReasoningEffort
   kvTypeK?: string
   kvTypeV?: string
   sessionCache?: SessionCacheSetup
@@ -35,6 +39,8 @@ export interface ParsedEngineArguments {
   parallel: number
   profile: EngineAutoProfile
   mtp: boolean
+  thinkingMode: ThinkingMode
+  reasoningEffort: ReasoningEffort
   kvTypeK: string
   kvTypeV: string
   sessionCacheEnabled: boolean
@@ -86,7 +92,8 @@ function setValue(arguments_: string[], path: string): string | undefined {
   return result
 }
 
-const managedOptions = new Set(['--addr', '--parallel', '--ctx', '--max-new', '--mmproj', '--embedding-model', '--embedding-idle-timeout'])
+const managedOptions = new Set(['--addr', '--parallel', '--ctx', '--max-new', '--mmproj', '--embedding-model', '--embedding-idle-timeout', '--reasoning-effort'])
+const managedFlags = new Set(['--think', '--no-think'])
 const managedSettings = new Set([
   'device.auto_profile',
   'spec.mtp',
@@ -116,6 +123,7 @@ export function unmanagedArguments(arguments_: string[]): string[] {
     const argument = arguments_[index]!
     if (argument === 'serve' || normalizeSetupPath(argument) === model) continue
     const [option] = argument.split('=', 1)
+    if (managedFlags.has(option!)) continue
     if (managedOptions.has(option!)) {
       if (!argument.includes('=')) index += 1
       continue
@@ -137,6 +145,15 @@ export function parseEngineArguments(arguments_: string[]): ParsedEngineArgument
   const sessionDirectory = setValue(arguments_, 'kv.session_cache_dir') ?? 'kv-sessions'
   const model = modelArgument(arguments_)
   const mtpModel = setValue(arguments_, 'spec.draft') ?? ''
+  let thinkingMode: ThinkingMode = 'default'
+  for (const argument of arguments_) {
+    if (argument === '--think') thinkingMode = 'on'
+    if (argument === '--no-think') thinkingMode = 'off'
+  }
+  const effort = optionValue(arguments_, '--reasoning-effort')
+  const reasoningEffort: ReasoningEffort = ['low', 'medium', 'xhigh', 'high', 'max'].includes(effort ?? '')
+    ? effort as ReasoningEffort
+    : 'default'
   return {
     model: model === mtpModel ? '' : model,
     visionModel: optionValue(arguments_, '--mmproj') ?? '',
@@ -146,6 +163,8 @@ export function parseEngineArguments(arguments_: string[]): ParsedEngineArgument
     parallel: Math.max(1, integer(optionValue(arguments_, '--parallel'), 2)),
     profile: setValue(arguments_, 'device.auto_profile') === 'aggressive' ? 'aggressive' : 'conservative',
     mtp: setValue(arguments_, 'spec.mtp') === 'true',
+    thinkingMode,
+    reasoningEffort,
     kvTypeK: setValue(arguments_, 'kv.type_k') ?? 'auto',
     kvTypeV: setValue(arguments_, 'kv.type_v') ?? 'auto',
     sessionCacheEnabled: sessionDirectory !== '',
@@ -181,6 +200,11 @@ export function buildEngineArguments(values: EngineSetupValues): string[] {
     '--max-new', String(values.maxTokens),
   ]
   arguments_.push('--set', `device.auto_profile=${values.profile}`, '--set', `spec.mtp=${values.mtp}`)
+  if (values.thinkingMode === 'on') arguments_.push('--think')
+  if (values.thinkingMode === 'off') arguments_.push('--no-think')
+  if (values.reasoningEffort && values.reasoningEffort !== 'default') {
+    arguments_.push('--reasoning-effort', values.reasoningEffort)
+  }
   if (values.mtp) {
     if (mtpModel === '') throw new Error('An MTP head GGUF path is required when MTP is enabled.')
     arguments_.push('--set', `spec.draft=${mtpModel}`)

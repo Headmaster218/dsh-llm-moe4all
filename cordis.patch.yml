@@ -43,3 +43,5 @@
         modelRefreshIntervalMs: 15000
         modelDiscoveryTimeoutMs: 3000
         statusDisplay: hover
+        bundledDistribution: false
+        bootstrapEngineOnStart: false

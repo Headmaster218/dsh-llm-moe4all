@@ -64,7 +64,7 @@ export interface EngineRuntimeStatus {
     diagnostic?: EngineStartupDiagnostic;
     metrics?: EngineRuntimeMetrics;
 }
-export type EngineStartupDiagnosticCode = 'vram' | 'ram' | 'context' | 'ubatch' | 'model' | 'vulkan' | 'port' | 'timeout' | 'unknown';
+export type EngineStartupDiagnosticCode = 'executable' | 'vram' | 'ram' | 'context' | 'ubatch' | 'model' | 'attachment' | 'compatibility' | 'configuration' | 'storage' | 'vulkan' | 'port' | 'timeout' | 'unknown';
 export interface EngineStartupDiagnostic {
     code: EngineStartupDiagnosticCode;
     summary: string;

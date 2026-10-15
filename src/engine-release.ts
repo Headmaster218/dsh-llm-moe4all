@@ -438,6 +438,10 @@ export class EngineReleaseManager {
     return { started: true, status: await this.status(currentExecutable) }
   }
 
+  async waitForInstall(): Promise<InstalledEngine | undefined> {
+    return this.installPromise
+  }
+
   installLatest(): Promise<InstalledEngine> {
     return this.runInstall(async (signal) => {
       this.setProgress(progress('checking', 0, undefined, 'Checking the latest official release...'))

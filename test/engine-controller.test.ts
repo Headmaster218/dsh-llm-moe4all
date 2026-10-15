@@ -89,6 +89,19 @@ test('startup diagnostics separate resource, model and driver failures', () => {
 
   const vulkan = diagnoseEngineStartup('Vulkan physical device failed: VK_ERROR_DEVICE_LOST', [])
   assert.equal(vulkan.code, 'vulkan')
+
+  assert.equal(diagnoseEngineStartup('spawn infr.exe ENOENT', []).code, 'executable')
+  assert.equal(diagnoseEngineStartup('failed to open mmproj: no such file', []).code, 'attachment')
+  assert.equal(diagnoseEngineStartup('unsupported model architecture qwen99', []).code, 'compatibility')
+  assert.equal(diagnoseEngineStartup('unknown argument --old-option', []).code, 'configuration')
+  assert.equal(diagnoseEngineStartup('No space left on device', []).code, 'storage')
+  assert.equal(diagnoseEngineStartup('ubatch allocation cannot fit', []).code, 'ubatch')
+
+  const unknown = diagnoseEngineStartup('engine exited unexpectedly', [
+    'INFO VRAM plan: total_room=22.94 GiB',
+    'INFO expanded dynamic KV cache requested_tokens=1',
+  ])
+  assert.equal(unknown.code, 'unknown')
 })
 
 test('connect mode reuses a healthy engine', async () => {

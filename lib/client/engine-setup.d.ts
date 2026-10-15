@@ -1,4 +1,6 @@
 export type EngineAutoProfile = 'conservative' | 'aggressive';
+export type ThinkingMode = 'default' | 'on' | 'off';
+export type ReasoningEffort = 'default' | 'low' | 'medium' | 'xhigh' | 'high' | 'max';
 export interface SessionCacheSetup {
     directory: string;
     maxSize: string;
@@ -18,6 +20,8 @@ export interface EngineSetupValues {
     parallel: number;
     profile: EngineAutoProfile;
     mtp: boolean;
+    thinkingMode?: ThinkingMode;
+    reasoningEffort?: ReasoningEffort;
     kvTypeK?: string;
     kvTypeV?: string;
     sessionCache?: SessionCacheSetup;
@@ -32,6 +36,8 @@ export interface ParsedEngineArguments {
     parallel: number;
     profile: EngineAutoProfile;
     mtp: boolean;
+    thinkingMode: ThinkingMode;
+    reasoningEffort: ReasoningEffort;
     kvTypeK: string;
     kvTypeV: string;
     sessionCacheEnabled: boolean;

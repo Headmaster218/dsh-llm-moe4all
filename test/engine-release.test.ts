@@ -207,6 +207,7 @@ test('first activation starts one automatic engine install and records the attem
 
     const first = await manager.bootstrapLatest()
     assert.equal(first.started, true)
+    assert.equal((await manager.waitForInstall())?.tag, release.tag_name)
     for (let attempt = 0; attempt < 50; attempt += 1) {
       const status = await manager.status()
       if (status.install.stage === 'complete') break

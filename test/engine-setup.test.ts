@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { buildEngineArguments, parseEngineArguments } from '../src/client/engine-setup.js'
+import { buildEngineArguments, parseEngineArguments, unmanagedArguments } from '../src/client/engine-setup.js'
 
 test('first-run setup defaults to two concurrent slots', () => {
   assert.equal(parseEngineArguments([]).parallel, 2)
@@ -93,7 +93,29 @@ test('first-run setup requires an MTP head when MTP is enabled', () => {
     parallel: 1,
     profile: 'conservative',
     mtp: true,
+    thinkingMode: 'off',
+    reasoningEffort: 'xhigh',
   }), /MTP head GGUF path/u)
+})
+
+test('thinking mode and reasoning effort are managed settings', () => {
+  const arguments_ = buildEngineArguments({
+    model: 'model.gguf',
+    host: '127.0.0.1',
+    port: 8080,
+    contextWindow: 32_768,
+    maxTokens: 4_096,
+    parallel: 2,
+    profile: 'conservative',
+    mtp: false,
+    thinkingMode: 'off',
+    reasoningEffort: 'medium',
+    extraArguments: ['--temp', '0.7'],
+  })
+  assert.deepEqual(parseEngineArguments(arguments_).thinkingMode, 'off')
+  assert.deepEqual(parseEngineArguments(arguments_).reasoningEffort, 'medium')
+  assert(!unmanagedArguments(arguments_).includes('--no-think'))
+  assert(!unmanagedArguments(arguments_).includes('--reasoning-effort'))
 })
 
 test('saved engine arguments round-trip into the unified settings editor', () => {
@@ -110,6 +132,8 @@ test('saved engine arguments round-trip into the unified settings editor', () =>
     parallel: 2,
     profile: 'aggressive',
     mtp: true,
+    thinkingMode: 'on',
+    reasoningEffort: 'xhigh',
     kvTypeK: 'f16',
     kvTypeV: 'q8_0',
     sessionCache: { directory: 'kv-sessions', maxSize: '5g', idleSeconds: 120, ttlHours: 48 },
@@ -123,6 +147,8 @@ test('saved engine arguments round-trip into the unified settings editor', () =>
     parallel: 2,
     profile: 'aggressive',
     mtp: true,
+    thinkingMode: 'on',
+    reasoningEffort: 'xhigh',
     kvTypeK: 'q8_0',
     kvTypeV: 'q8_0',
     sessionCacheEnabled: true,

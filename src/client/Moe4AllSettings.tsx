@@ -39,6 +39,7 @@ import { ApiKeyField } from './ApiKeyField.js'
 import { EngineVersionsView } from './EngineVersionsView.js'
 import { ModelLibraryView, roleIcon, roleLabel } from './ModelLibraryView.js'
 import { RuntimeMetrics } from './RuntimeStatus.js'
+import { localizeStartupDiagnostic } from './startup-diagnostic.js'
 import { Button, Dialog, Field, IconButton, Toggle, Transfer } from './workspace-ui.js'
 
 export interface Moe4AllSettingsInjected {
@@ -144,6 +145,7 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
   const candidatePortValid = Number.isInteger(candidatePort) && candidatePort >= 1 && candidatePort <= 65_535
   const output = (w.status?.startupLines ?? []).join('\n')
   const failure = w.status?.phase === 'error' ? w.status : undefined
+  const failureDiagnostic = failure?.diagnostic ? localizeStartupDiagnostic(failure.diagnostic, t) : undefined
   const failureKey = failure
     ? [failure.startupStartedAt ?? '', failure.message ?? '', failure.startupLines?.at(-1) ?? ''].join('\0')
     : ''
@@ -597,13 +599,13 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
                 <div className="m4a-startup-diagnostic" role="alert">
                   <div>
                     <CircleAlert size={18} />
-                    <strong>{failure.diagnostic?.summary ?? failure.message ?? t('startupFailedTitle')}</strong>
+                    <strong>{failureDiagnostic?.summary ?? failure.message ?? t('startupFailedTitle')}</strong>
                   </div>
-                  {failure.diagnostic && (
+                  {failureDiagnostic && (
                     <>
                       <span>{t('diagnosticNextSteps')}</span>
                       <ul>
-                        {failure.diagnostic.suggestions.map((suggestion) => (
+                        {failureDiagnostic.suggestions.map((suggestion) => (
                           <li key={suggestion}>{suggestion}</li>
                         ))}
                       </ul>
@@ -996,12 +998,12 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
           }
         >
           <div className="m4a-startup-failure">
-            <p role="alert">{failure.diagnostic?.summary ?? failure.message ?? t('failedStatus')}</p>
-            {failure.diagnostic && (
+            <p role="alert">{failureDiagnostic?.summary ?? failure.message ?? t('failedStatus')}</p>
+            {failureDiagnostic && (
               <div>
                 <strong>{t('diagnosticNextSteps')}</strong>
                 <ul>
-                  {failure.diagnostic.suggestions.map((suggestion) => (
+                  {failureDiagnostic.suggestions.map((suggestion) => (
                     <li key={suggestion}>{suggestion}</li>
                   ))}
                 </ul>
@@ -1042,7 +1044,6 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
               onChange={(event) => w.setPortCandidate(event.target.value)}
             />
           </Field>
-          {w.status?.message && <p>{w.status.message}</p>}
         </Dialog>
       )}
     </div>

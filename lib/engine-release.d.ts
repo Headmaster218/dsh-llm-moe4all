@@ -74,6 +74,7 @@ export declare class EngineReleaseManager {
     versions(): Promise<InstalledEngine[]>;
     status(currentExecutable?: string, force?: boolean): Promise<EngineReleaseStatus>;
     bootstrapLatest(currentExecutable?: string): Promise<EngineBootstrapResult>;
+    waitForInstall(): Promise<InstalledEngine | undefined>;
     installLatest(): Promise<InstalledEngine>;
     installFromLocal(input: string): Promise<InstalledEngine>;
     cancelInstall(): EngineInstallProgress;

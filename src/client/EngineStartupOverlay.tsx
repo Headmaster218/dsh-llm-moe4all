@@ -4,6 +4,7 @@ import { Play, RefreshCw } from 'lucide-react'
 import type { Config } from '../index.js'
 import type { EngineControlStatus } from '../host-routes.js'
 import { fetchEngineStatus, startEngine } from './engine-api.js'
+import { localizeStartupDiagnostic } from './startup-diagnostic.js'
 import { Button, Dialog, Field, Toggle, type Translate } from './workspace-ui.js'
 
 export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config>; t: Translate }) {
@@ -101,6 +102,7 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
   const warning = phase === 'resource-warning'
   const conflict = phase === 'port-conflict'
   const failed = phase === 'error'
+  const diagnostic = failed && status.diagnostic ? localizeStartupDiagnostic(status.diagnostic, t) : undefined
   const selectedPort = Number(port)
   const validPort = Number.isInteger(selectedPort) && selectedPort >= 1 && selectedPort <= 65_535
   return (
@@ -156,16 +158,15 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
           />
         </Field>
       )}
-      {failed && <p role="alert">{status.message}</p>}
-      {failed && status.diagnostic && (
+      {failed && <p role="alert">{diagnostic?.summary ?? status.message}</p>}
+      {failed && diagnostic && (
         <div>
           <strong>{t('diagnosticNextSteps')}</strong>
           <ul>
-            {status.diagnostic.suggestions.map((suggestion) => <li key={suggestion}>{suggestion}</li>)}
+            {diagnostic.suggestions.map((suggestion) => <li key={suggestion}>{suggestion}</li>)}
           </ul>
         </div>
       )}
-      {conflict && status.message && <p>{status.message}</p>}
       {starting && <progress aria-label={t('startingStatus')} />}
       {(starting || failed) && (
         <pre className="m4a-log m4a-log--preview">
