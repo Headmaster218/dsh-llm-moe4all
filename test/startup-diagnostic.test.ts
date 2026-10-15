@@ -1,20 +1,15 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import type { EngineStartupDiagnostic } from '../src/engine-controller.js'
-import { localizeStartupDiagnostic } from '../src/client/startup-diagnostic.js'
+import { startupAdjustmentSuggestions } from '../src/client/startup-diagnostic.js'
 import { workspaceEn, workspaceZh } from '../src/client/workspace-copy.js'
 
-test('startup diagnostics follow the active Agent language', () => {
-  const diagnostic: EngineStartupDiagnostic = {
-    code: 'vram',
-    summary: 'host fallback',
-    suggestions: ['host fallback'],
-    canRetryWithOneSlot: true,
-  }
-  const en = localizeStartupDiagnostic(diagnostic, key => workspaceEn[key])
-  const zh = localizeStartupDiagnostic(diagnostic, key => workspaceZh[key])
-  assert.match(en.summary, /VRAM/u)
-  assert.match(zh.summary, /无法分配/u)
-  assert.notEqual(en.suggestions[0], zh.suggestions[0])
+test('common startup adjustments follow the active Agent language', () => {
+  const en = startupAdjustmentSuggestions(key => workspaceEn[key])
+  const zh = startupAdjustmentSuggestions(key => workspaceZh[key])
+  assert.equal(en.length, 4)
+  assert.equal(zh.length, 4)
+  assert(en.every(suggestion => typeof suggestion === 'string' && suggestion.length > 0))
+  assert(zh.every(suggestion => typeof suggestion === 'string' && suggestion.length > 0))
+  assert.notDeepEqual(en, zh)
 })

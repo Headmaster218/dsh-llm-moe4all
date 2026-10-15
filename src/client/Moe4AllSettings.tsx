@@ -39,7 +39,7 @@ import { ApiKeyField } from './ApiKeyField.js'
 import { EngineVersionsView } from './EngineVersionsView.js'
 import { ModelLibraryView, roleIcon, roleLabel } from './ModelLibraryView.js'
 import { RuntimeMetrics } from './RuntimeStatus.js'
-import { localizeStartupDiagnostic } from './startup-diagnostic.js'
+import { startupAdjustmentSuggestions } from './startup-diagnostic.js'
 import { Button, Dialog, Field, IconButton, Toggle, Transfer } from './workspace-ui.js'
 
 export interface Moe4AllSettingsInjected {
@@ -145,7 +145,6 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
   const candidatePortValid = Number.isInteger(candidatePort) && candidatePort >= 1 && candidatePort <= 65_535
   const output = (w.status?.startupLines ?? []).join('\n')
   const failure = w.status?.phase === 'error' ? w.status : undefined
-  const failureDiagnostic = failure?.diagnostic ? localizeStartupDiagnostic(failure.diagnostic, t) : undefined
   const failureKey = failure
     ? [failure.startupStartedAt ?? '', failure.message ?? '', failure.startupLines?.at(-1) ?? ''].join('\0')
     : ''
@@ -599,18 +598,15 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
                 <div className="m4a-startup-diagnostic" role="alert">
                   <div>
                     <CircleAlert size={18} />
-                    <strong>{failureDiagnostic?.summary ?? failure.message ?? t('startupFailedTitle')}</strong>
+                    <strong>{t('startupFailedTitle')}</strong>
                   </div>
-                  {failureDiagnostic && (
-                    <>
-                      <span>{t('diagnosticNextSteps')}</span>
-                      <ul>
-                        {failureDiagnostic.suggestions.map((suggestion) => (
-                          <li key={suggestion}>{suggestion}</li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
+                  <p>{t('startupFailedBody')}</p>
+                  <span>{t('startupAdjustmentsTitle')}</span>
+                  <ul>
+                    {startupAdjustmentSuggestions(t).map((suggestion) => (
+                      <li key={suggestion}>{suggestion}</li>
+                    ))}
+                  </ul>
                 </div>
               )}
               {ready && (
@@ -971,18 +967,6 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
               >
                 {t('diagnosticsTab')}
               </Button>
-              {failure.diagnostic?.canRetryWithOneSlot && (
-                <Button
-                  icon={RefreshCw}
-                  busy={w.working === 'start'}
-                  onClick={() => {
-                    setDismissedFailure(failureKey)
-                    void w.launchOneSlot()
-                  }}
-                >
-                  {t('retryOneSlot')}
-                </Button>
-              )}
               <Button
                 kind="primary"
                 icon={RefreshCw}
@@ -998,17 +982,15 @@ export function Moe4AllSettings(props: Moe4AllSettingsProps): ReactNode {
           }
         >
           <div className="m4a-startup-failure">
-            <p role="alert">{failureDiagnostic?.summary ?? failure.message ?? t('failedStatus')}</p>
-            {failureDiagnostic && (
-              <div>
-                <strong>{t('diagnosticNextSteps')}</strong>
-                <ul>
-                  {failureDiagnostic.suggestions.map((suggestion) => (
-                    <li key={suggestion}>{suggestion}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <p role="alert">{t('startupFailedBody')}</p>
+            <div>
+              <strong>{t('startupAdjustmentsTitle')}</strong>
+              <ul>
+                {startupAdjustmentSuggestions(t).map((suggestion) => (
+                  <li key={suggestion}>{suggestion}</li>
+                ))}
+              </ul>
+            </div>
             <strong>{t('runtimeOutput')}</strong>
             <pre className="m4a-log m4a-log--preview">
               {failure.startupLines?.slice(-20).join('\n') || failure.message || t('noOutput')}

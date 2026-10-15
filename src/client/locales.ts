@@ -40,7 +40,7 @@ export type Moe4AllLocaleKey = WorkspaceKey
   | 'supportsVision' | 'supportsMtp' | 'downloadToDirectory' | 'downloadRecommended'
   | 'modelDownloadProgress' | 'modelDownloadComplete' | 'modelDownloadRetry' | 'sourcePage'
   | 'startupProgressTitle' | 'startupProgressBody' | 'startupOutput' | 'startupFailedTitle'
-  | 'retryStart' | 'retryOneSlot' | 'diagnosticNextSteps'
+  | 'retryStart'
   | 'engineVersion' | 'engineNotInstalled' | 'deleteEngine' | 'confirmDeleteEngine'
   | 'stopDownload' | 'downloadFailed' | 'currentConfiguration' | 'currentConfigurationHint'
   | 'mainModel' | 'visionModel' | 'mtpModel' | 'embeddingModel' | 'notSelected'
@@ -109,8 +109,6 @@ export const en: Record<Moe4AllLocaleKey, string> = {
   startupOutput: 'Engine output',
   startupFailedTitle: 'MoE4All could not start',
   retryStart: 'Retry start',
-  retryOneSlot: 'Retry with 1 slot',
-  diagnosticNextSteps: 'Recommended next steps',
   title: 'MoE4All engine',
   loading: 'Loading configuration...',
   unavailable: 'Engine settings are unavailable on this connection.',
@@ -295,8 +293,6 @@ export const zh: Record<Moe4AllLocaleKey, string> = {
   startupOutput: '引擎输出',
   startupFailedTitle: 'MoE4All 启动失败',
   retryStart: '重试启动',
-  retryOneSlot: '改为 1 slot 并重试',
-  diagnosticNextSteps: '建议下一步',
   title: 'MoE4All 引擎',
   loading: '正在加载配置...',
   unavailable: '当前连接无法访问引擎设置。',

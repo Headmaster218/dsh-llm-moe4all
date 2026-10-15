@@ -87,31 +87,7 @@ export interface EngineRuntimeStatus {
   suggestedPort?: number
   startupStartedAt?: string
   startupLines?: string[]
-  diagnostic?: EngineStartupDiagnostic
   metrics?: EngineRuntimeMetrics
-}
-
-export type EngineStartupDiagnosticCode =
-  | 'executable'
-  | 'vram'
-  | 'ram'
-  | 'context'
-  | 'ubatch'
-  | 'model'
-  | 'attachment'
-  | 'compatibility'
-  | 'configuration'
-  | 'storage'
-  | 'vulkan'
-  | 'port'
-  | 'timeout'
-  | 'unknown'
-
-export interface EngineStartupDiagnostic {
-  code: EngineStartupDiagnosticCode
-  summary: string
-  suggestions: string[]
-  canRetryWithOneSlot: boolean
 }
 
 export interface EngineStartResult {
@@ -154,99 +130,6 @@ export function runtimeLogFilter(value: string | undefined): string | undefined 
     return current
   }
   return `${current},infr_server=info`
-}
-
-export function diagnoseEngineStartup(message: string, startupLines: string[]): EngineStartupDiagnostic {
-  const evidence = `${message}\n${startupLines.join('\n')}`
-  const diagnostic = (
-    code: EngineStartupDiagnosticCode,
-    summary: string,
-    suggestions: string[],
-    canRetryWithOneSlot = false,
-  ): EngineStartupDiagnostic => ({ code, summary, suggestions, canRetryWithOneSlot })
-  if (/(?:address already in use|eaddrinuse|wsaeaddrinuse|\b10048\b|port .* in use|only one usage of each socket address|bind.*failed)/iu.test(evidence)) {
-    return diagnostic('port', 'The Engine listen port is already occupied.', [
-      'Choose an unused port, or stop the service that currently owns this port.',
-    ])
-  }
-  if (/(?:spawn.*enoent|\benoent\b|executable.*(?:not found|missing|does not exist)|cannot find.*infr\.exe|failed to start.*process|\beacces\b|(?:infr|executable).*access is denied|access is denied.*(?:infr|executable))/iu.test(evidence)) {
-    return diagnostic('executable', 'The selected Engine executable could not be started.', [
-      'Install or select a valid MoE4All engine build.',
-      'Check that security software has not removed or blocked infr.exe.',
-    ])
-  }
-  if (/(?:mmproj|vision projector|embedding(?: model)?|mtp head|draft model|spec\.draft).*(?:not found|no such file|failed to open|invalid|corrupt|missing)|(?:not found|no such file).*(?:mmproj|embedding|mtp|draft)/iu.test(evidence)) {
-    return diagnostic('attachment', 'An optional model file is missing, unreadable, or incompatible.', [
-      'Select the Vision, Embedding, or MTP file again, or disable that capability.',
-      'Use attachment files that belong to the selected language model family.',
-    ])
-  }
-  if (/(?:gguf|model).*(?:not found|no such file|failed to open|invalid|corrupt)|(?:not found|no such file).*(?:gguf|model)/iu.test(evidence)) {
-    return diagnostic('model', 'The selected model file is missing, unreadable, or invalid.', [
-      'Select the first GGUF shard again and verify that every shard is present.',
-      'Avoid moving or renaming model files while the Engine is starting.',
-    ])
-  }
-  if (/(?:unsupported (?:model|architecture|tensor|gguf)|unknown (?:model )?architecture|required tensor.*(?:missing|not found)|architecture.*(?:not supported|unsupported))/iu.test(evidence)) {
-    return diagnostic('compatibility', 'This Engine build does not support the selected model.', [
-      'Install the latest compatible MoE4All engine release.',
-      'Verify the model architecture and quantization against the release notes.',
-    ])
-  }
-  if (/(?:unknown|unrecognized|unexpected) (?:option|argument)|invalid value for|failed to parse.*(?:config|toml|argument)|mutually exclusive|required (?:option|argument)/iu.test(evidence)) {
-    return diagnostic('configuration', 'The Engine rejected one or more launch settings.', [
-      'Review additional engine arguments and remove unsupported or duplicate options.',
-      'Reset advanced settings to automatic values, then retry.',
-    ])
-  }
-  if (/(?:(?:kv cache|context window).*(?:cannot|failed|too large|out of|capacity|overflow)|(?:cannot|failed).*(?:kv cache|context window)|context.*(?:too large|overflow))/iu.test(evidence)) {
-    return diagnostic('context', 'The configured context or KV cache does not fit the available resources.', [
-      'Retry with 1 concurrent slot.',
-      'Reduce the context window, then start the Engine again.',
-    ], true)
-  }
-  if (/(?:ubatch|micro.?batch|batch.*(?:too large|allocation|cannot fit))/iu.test(evidence)) {
-    return diagnostic('ubatch', 'The configured ubatch is too large for the available runtime arena.', [
-      'Reduce ubatch and retry. Automatic configuration can fall back through supported sizes.',
-      'Retry with 1 concurrent slot if multiple KV slots were requested.',
-    ], true)
-  }
-  if (/(?:not enough memory|paging file.*(?:too small|exhaust|limit)|virtual memory.*(?:exhaust|limit|failed)|(?:system commit|commit headroom|ram budget).*(?:exceed|insufficient|cannot|failed)|host store.*(?:cannot|failed|out of)|cannot (?:reserve|allocate).*ram)/iu.test(evidence)) {
-    return diagnostic('ram', 'The Engine could not reserve enough system RAM or Windows commit.', [
-      'Retry with 1 concurrent slot.',
-      'Close memory-heavy applications or increase the Windows page file.',
-      'Use the conservative automatic profile or a smaller RAM budget.',
-    ], true)
-  }
-  if (/(?:cannot fit|out of device memory|vk_error_out_of_device_memory|(?:vram|device memory|frozen arena|largest_gap|memory heap).*(?:out of|cannot|failed|insufficient|short))/iu.test(evidence)) {
-    return diagnostic('vram', 'The Engine could not reserve enough usable VRAM for this configuration.', [
-      'Retry with 1 concurrent slot.',
-      'Use the conservative automatic profile, or reduce context and ubatch.',
-      'Close other GPU applications before retrying.',
-    ], true)
-  }
-  if (/(?:no space left on device|disk full|not enough space|insufficient disk space|i\/o error|input\/output error)/iu.test(evidence)) {
-    return diagnostic('storage', 'The Engine could not read or write required local data.', [
-      'Free disk space and verify that the model and cache directories are readable and writable.',
-      'Retry from a healthy local drive.',
-    ])
-  }
-  if (/(?:vulkan|vk_error|device lost|driver).*(?:failed|error|unsupported|lost)|(?:failed|error).*(?:vulkan|physical device)/iu.test(evidence)) {
-    return diagnostic('vulkan', 'The Vulkan device or driver failed during Engine startup.', [
-      'Verify the selected GPU and update or repair its Vulkan-capable driver.',
-      'Close other GPU workloads, then retry.',
-    ])
-  }
-  if (/(?:did not become healthy|timed? out|timeout)/iu.test(evidence)) {
-    return diagnostic('timeout', 'The Engine did not become ready before the startup timeout.', [
-      'Review the final startup log lines for a stalled model load.',
-      'Retry after closing competing disk, RAM, or GPU workloads.',
-    ])
-  }
-  return diagnostic('unknown', 'The Engine exited before it became ready.', [
-    'Review the startup log below. The final error line usually identifies the failing option or file.',
-    'Retry once after confirming the model and device settings.',
-  ])
 }
 
 type ResolvedEngineConfig = {
@@ -780,7 +663,6 @@ export class EngineController {
     const run = this.start(force).catch((error: unknown) => {
       if (this.abort.signal.aborted) return { ok: false, status: this.statusSnapshot() }
       const message = error instanceof Error ? error.message : String(error)
-      const diagnostic = diagnoseEngineStartup(message, this.startupLines)
       this.logger.error(error instanceof Error ? error : new Error(message))
       return {
         ok: false,
@@ -789,8 +671,7 @@ export class EngineController {
           ready: false,
           canStart: true,
           ...this.startupDetails(),
-          message: diagnostic.summary,
-          diagnostic,
+          message,
         }),
       }
     }).finally(() => {

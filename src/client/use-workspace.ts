@@ -269,16 +269,6 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
       await persist(true)
       applyStartResult(await api.startEngine(false))
     })
-  const launchOneSlot = () =>
-    run('start', async () => {
-      const current = live.current
-      if (current === null) return
-      const next = { ...current, setup: { ...current.setup, parallel: 1 } }
-      setEditor(next)
-      live.current = next
-      await persist(true)
-      applyStartResult(await api.startEngine(false))
-    })
   const stop = () =>
     run('stop', async () => {
       const result = await api.stopEngine()
@@ -491,7 +481,6 @@ export function useWorkspace(props: Moe4AllSettingsProps) {
     save,
     launch,
     launchAtPort,
-    launchOneSlot,
     stop,
     refresh,
     saveApiKey,

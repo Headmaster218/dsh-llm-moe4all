@@ -55,7 +55,6 @@ export declare function useWorkspace(props: Moe4AllSettingsProps): {
     save: () => Promise<boolean>;
     launch: (force?: boolean, restart?: boolean) => Promise<boolean>;
     launchAtPort: (port: number) => Promise<boolean>;
-    launchOneSlot: () => Promise<boolean>;
     stop: () => Promise<boolean>;
     refresh: () => Promise<boolean>;
     saveApiKey: (value: string) => Promise<boolean>;

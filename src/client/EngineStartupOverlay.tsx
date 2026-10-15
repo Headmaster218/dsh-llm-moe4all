@@ -4,7 +4,7 @@ import { Play, RefreshCw } from 'lucide-react'
 import type { Config } from '../index.js'
 import type { EngineControlStatus } from '../host-routes.js'
 import { fetchEngineStatus, startEngine } from './engine-api.js'
-import { localizeStartupDiagnostic } from './startup-diagnostic.js'
+import { startupAdjustmentSuggestions } from './startup-diagnostic.js'
 import { Button, Dialog, Field, Toggle, type Translate } from './workspace-ui.js'
 
 export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config>; t: Translate }) {
@@ -54,24 +54,7 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
     if (status?.phase === 'port-conflict' && status.suggestedPort !== undefined)
       setPort(String(status.suggestedPort))
   }, [status?.phase, status?.suggestedPort])
-  function oneSlotArguments(arguments_: string[] | undefined): string[] {
-    const next = [...(arguments_ ?? [])]
-    for (let index = 0; index < next.length; index += 1) {
-      if (next[index] === '--parallel') {
-        if (index + 1 < next.length) next[index + 1] = '1'
-        else next.push('1')
-        return next
-      }
-      if (next[index]?.startsWith('--parallel=')) {
-        next[index] = '--parallel=1'
-        return next
-      }
-    }
-    const serve = next.indexOf('serve')
-    next.splice(serve >= 0 ? serve + 1 : 0, 0, '--parallel', '1')
-    return next
-  }
-  async function launch(force: boolean, selectedPort?: number, oneSlot = false) {
+  async function launch(force: boolean, selectedPort?: number) {
     setBusy(true)
     setError('')
     try {
@@ -79,7 +62,6 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
         await scope.set('endpoint', '')
         await scope.set('port', selectedPort)
       }
-      if (oneSlot) await scope.set('arguments', oneSlotArguments(config?.arguments))
       const result = await startEngine(force)
       setStatus(result.status)
       if (result.ok) {
@@ -102,7 +84,6 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
   const warning = phase === 'resource-warning'
   const conflict = phase === 'port-conflict'
   const failed = phase === 'error'
-  const diagnostic = failed && status.diagnostic ? localizeStartupDiagnostic(status.diagnostic, t) : undefined
   const selectedPort = Number(port)
   const validPort = Number.isInteger(selectedPort) && selectedPort >= 1 && selectedPort <= 65_535
   return (
@@ -133,18 +114,10 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
               {t(warning ? 'startAnyway' : conflict ? 'changePortAndStart' : failed ? 'retryStart' : 'startNow')}
             </Button>
           )}
-          {!starting && failed && status.diagnostic?.canRetryWithOneSlot && (
-            <Button
-              icon={RefreshCw}
-              onClick={() => void launch(false, undefined, true)}
-            >
-              {t('retryOneSlot')}
-            </Button>
-          )}
         </>
       }
     >
-      <p>{t(warning ? 'resourceWarningBody' : conflict ? 'portConflictBody' : starting ? 'startupProgressBody' : 'startupPromptBody')}</p>
+      <p>{t(warning ? 'resourceWarningBody' : conflict ? 'portConflictBody' : starting ? 'startupProgressBody' : failed ? 'startupFailedBody' : 'startupPromptBody')}</p>
       <code>{status.endpoint}</code>
       {warning && status.reasons?.map((reason) => <p key={reason}>{reason}</p>)}
       {conflict && (
@@ -158,12 +131,11 @@ export function EngineStartupOverlay({ scope, t }: { scope: SettingsScope<Config
           />
         </Field>
       )}
-      {failed && <p role="alert">{diagnostic?.summary ?? status.message}</p>}
-      {failed && diagnostic && (
+      {failed && (
         <div>
-          <strong>{t('diagnosticNextSteps')}</strong>
+          <strong>{t('startupAdjustmentsTitle')}</strong>
           <ul>
-            {diagnostic.suggestions.map((suggestion) => <li key={suggestion}>{suggestion}</li>)}
+            {startupAdjustmentSuggestions(t).map((suggestion) => <li key={suggestion}>{suggestion}</li>)}
           </ul>
         </div>
       )}
