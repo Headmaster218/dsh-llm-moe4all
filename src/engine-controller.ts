@@ -3,7 +3,7 @@ import { constants as fsConstants } from 'node:fs'
 import { access } from 'node:fs/promises'
 import { freemem, totalmem, networkInterfaces } from 'node:os'
 import { createServer } from 'node:net'
-import { delimiter, dirname, extname, isAbsolute, join, resolve } from 'node:path'
+import { delimiter, dirname, extname, isAbsolute, join, posix, resolve } from 'node:path'
 import { createInterface, type Interface as ReadLineInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
@@ -130,6 +130,27 @@ export function runtimeLogFilter(value: string | undefined): string | undefined 
     return current
   }
   return `${current},infr_server=info`
+}
+
+export function sessionCacheArguments(arguments_: string[], environment: NodeJS.ProcessEnv = process.env): string[] {
+  const directory = environment.MOE4ALL_KV_CACHE_DIR?.trim()
+    || (environment.MOE4ALL_CACHE_DIR?.trim() ? join(environment.MOE4ALL_CACHE_DIR.trim(), 'kv-sessions') : '')
+  if (!directory) return [...arguments_]
+
+  const setting = 'kv.session_cache_dir='
+  // Resolve the UI's portable default at every launch, not just at Agent startup.
+  const relocate = (value: string): string => {
+    if (!value.startsWith(setting)) return value
+    const current = value.slice(setting.length)
+    return posix.normalize(current.replaceAll('\\', '/')).replace(/\/$/u, '') === 'kv-sessions'
+      ? `${setting}${resolve(directory)}`
+      : value
+  }
+  return arguments_.map((argument, index) => {
+    if (arguments_[index - 1] === '--set') return relocate(argument)
+    if (argument.startsWith('--set=')) return `--set=${relocate(argument.slice(6))}`
+    return argument
+  })
 }
 
 type ResolvedEngineConfig = {
@@ -874,7 +895,7 @@ export class EngineController {
       environment.INFR_SERVE_STATS_SECS ??= '1'
     }
     this.logger.info(`Starting MoE4All engine: ${executable}`)
-    this.child = spawn(executable, arguments_, {
+    this.child = spawn(executable, sessionCacheArguments(arguments_, environment), {
       cwd: this.config.workingDirectory || undefined,
       env: environment,
       shell: false,

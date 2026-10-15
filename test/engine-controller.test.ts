@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { createServer } from 'node:http'
-import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 
 import {
@@ -9,6 +10,7 @@ import {
   endpointFromConfig,
   probeHealth,
   runtimeLogFilter,
+  sessionCacheArguments,
   validateEndpoint,
   type EngineControllerDependencies,
   type ResourceSnapshot,
@@ -70,6 +72,68 @@ test('managed output capture keeps server metrics visible under restrictive host
   assert.equal(runtimeLogFilter('warn'), 'warn,infr_server=info')
   assert.equal(runtimeLogFilter('warn,infr_server=warn'), 'warn,infr_server=warn,infr_server=info')
   assert.equal(runtimeLogFilter('warn,infr_server=debug'), 'warn,infr_server=debug')
+})
+
+test('portable KV session defaults use the Agent cache for both set syntaxes', () => {
+  const directory = join(tmpdir(), 'Agent install', 'cache', 'kv-sessions')
+  for (const value of ['kv-sessions', './kv-sessions', '.\\kv-sessions', 'kv-sessions/']) {
+    const arguments_ = ['serve', '--set', `kv.session_cache_dir=${value}`, 'model.gguf']
+    assert.deepEqual(sessionCacheArguments(arguments_, { MOE4ALL_KV_CACHE_DIR: directory }),
+      ['serve', '--set', `kv.session_cache_dir=${directory}`, 'model.gguf'])
+    assert.equal(arguments_[2], `kv.session_cache_dir=${value}`)
+    assert.deepEqual(sessionCacheArguments(['serve', `--set=kv.session_cache_dir=${value}`], {
+      MOE4ALL_KV_CACHE_DIR: directory,
+    }), ['serve', `--set=kv.session_cache_dir=${directory}`])
+  }
+  assert.deepEqual(sessionCacheArguments(['--set', 'kv.session_cache_dir=kv-sessions'], {
+    MOE4ALL_CACHE_DIR: dirname(directory),
+  }), ['--set', `kv.session_cache_dir=${directory}`])
+  assert.deepEqual(sessionCacheArguments(['--set', 'kv.session_cache_dir=kv-sessions'], {
+    MOE4ALL_KV_CACHE_DIR: directory, MOE4ALL_CACHE_DIR: join(tmpdir(), 'other-cache'),
+  }), ['--set', `kv.session_cache_dir=${directory}`])
+})
+
+test('KV path resolution preserves disabled, custom, absent and standalone settings', () => {
+  const environment = { MOE4ALL_KV_CACHE_DIR: join(tmpdir(), 'Agent cache', 'kv-sessions') }
+  for (const value of ['', join(tmpdir(), 'custom-kv'), 'C:\\custom\\kv-sessions', '/custom/kv', 'custom-kv']) {
+    const arguments_ = ['serve', '--set', `kv.session_cache_dir=${value}`]
+    assert.deepEqual(sessionCacheArguments(arguments_, environment), arguments_)
+  }
+  const standalone = ['serve', '--set', 'kv.session_cache_dir=kv-sessions']
+  assert.deepEqual(sessionCacheArguments(standalone, {}), standalone)
+  const absent = ['serve', '--set', 'device.auto_profile=aggressive', 'model.gguf']
+  assert.deepEqual(sessionCacheArguments(absent, environment), absent)
+  const disabled = [...standalone, '--set=kv.session_cache_dir=']
+  assert.equal(sessionCacheArguments(disabled, environment).at(-1), '--set=kv.session_cache_dir=')
+})
+
+test('managed launches keep KV sessions in one Agent directory across engine working directories', async () => {
+  const previous = process.env.MOE4ALL_KV_CACHE_DIR
+  const directory = join(tmpdir(), 'Agent install', 'cache', 'kv-sessions')
+  process.env.MOE4ALL_KV_CACHE_DIR = directory
+  try {
+    for (const workingDirectory of [import.meta.dirname, dirname(import.meta.dirname)]) {
+      const port = await unusedPort()
+      const controller = new EngineController({
+        mode: 'auto', port, workingDirectory, executable: process.execPath,
+        arguments: [join(import.meta.dirname, 'fake-engine.mjs'), String(port), '--set', 'kv.session_cache_dir=kv-sessions'],
+        startupTimeoutMs: 5_000, healthTimeoutMs: 250, pollIntervalMs: 25,
+        shutdownTimeoutMs: 2_000, logOutput: false,
+      }, quietLogger, dependencies())
+      try {
+        assert.equal(await controller.ensureReady(), true)
+        const response = await fetch(`http://127.0.0.1:${port}/launch`)
+        const launch = await response.json() as { arguments: string[], cwd: string }
+        assert.equal(launch.cwd, workingDirectory)
+        assert.equal(launch.arguments.at(-1), `kv.session_cache_dir=${directory}`)
+      } finally {
+        await controller.dispose(true)
+      }
+    }
+  } finally {
+    if (previous === undefined) delete process.env.MOE4ALL_KV_CACHE_DIR
+    else process.env.MOE4ALL_KV_CACHE_DIR = previous
+  }
 })
 
 test('connect mode reuses a healthy engine', async () => {

@@ -11,6 +11,11 @@ const server = createServer((request, response) => {
     response.end('{"status":"ok"}')
     return
   }
+  if (request.url === '/launch') {
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ arguments: process.argv.slice(2), cwd: process.cwd() }))
+    return
+  }
   response.writeHead(404)
   response.end()
 })

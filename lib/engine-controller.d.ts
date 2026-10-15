@@ -94,6 +94,7 @@ export declare const DEFAULT_CONFIG: {
     readonly logOutput: true;
 };
 export declare function runtimeLogFilter(value: string | undefined): string | undefined;
+export declare function sessionCacheArguments(arguments_: string[], environment?: NodeJS.ProcessEnv): string[];
 type ResolvedEngineConfig = {
     [Key in keyof Required<EngineConfig>]: Required<EngineConfig>[Key];
 };
