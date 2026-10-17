@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "npmVersion": "10.9.2",
+  "lockfiles": [
+    "package-lock.json",
+    "test/fixtures/compat-dependencies/0.1.1-rc.2/package-lock.json",
+    "test/fixtures/compat-dependencies/0.1.5-rc.3/package-lock.json",
+    "test/fixtures/dsh-runtimes/0.1.1-rc.2/package-lock.json",
+    "test/fixtures/dsh-runtimes/0.2.0-rc.2/package-lock.json"
+  ]
+}

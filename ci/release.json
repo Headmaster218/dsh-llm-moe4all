@@ -1,0 +1,4 @@
+{
+  "assets": ["dsh-llm-moe4all.tgz", "dsh-llm-moe4all-windows.zip", "SHA256SUMS.txt"],
+  "notesFile": "dist/RELEASE-NOTES.md"
+}
