@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.4
+
+- 统一仓库内的 CI 依赖缓存，在开发检查和发布之间复用 npm 下载包，保留三组 DSH 兼容测试。
+- 增加 main 手动 draft release 验收入口，校验包和源码身份，拒绝覆盖已有版本；插件与推理运行逻辑不变。
+
 ## 0.2.3
 
 - Integrate the Agent capability center: require download consent for bundled profiles, order the Engine settings after Capabilities, and reject changed confirmed Engine release tags before downloading archives.
