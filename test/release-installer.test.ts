@@ -80,11 +80,16 @@ test('README install links offer the stable ZIP and a releases fallback', async 
 test('release publication waits for reusable compatibility CI and validates assets', async () => {
   const release = await read('../.github/workflows/release.yml')
   const ci = await read('../.github/workflows/ci.yml')
+  const publisher = await read('../ci/release-mode.mjs')
+  const publication = JSON.parse(await read('../ci/release.json')) as { notesFile: string }
   assert.match(release, /uses: \.\/\.github\/workflows\/ci\.yml/u)
   assert.match(release, /needs: validation/u)
   assert.match(release, /check-release\.ps1/u)
   assert.match(release, /release-notes\.mjs/u)
-  assert.match(release, /--notes-file/u)
+  assert.match(release, /node ci\/release-mode\.mjs publish/u)
+  assert.equal(publication.notesFile, 'dist/RELEASE-NOTES.md')
+  assert.match(publisher, /args\.push\('--notes-file', localAsset\(root, config\.notesFile\)\)/u)
+  assert.match(publisher, /if \(plan\.draft\) args\.push\('--draft'\)/u)
   assert.match(ci, /workflow_call:/u)
   assert.match(ci, /git diff --exit-code -- lib/u)
   assert.match(ci, /npm install --global pnpm@11\.7\.0/u)

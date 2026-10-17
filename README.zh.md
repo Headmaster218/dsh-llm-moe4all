@@ -20,7 +20,7 @@ English documentation: [README.md](README.md)
 
 ### 收录 DSH 插件市场前：Windows 一键安装
 
-1. 直接下载 [0.2.3 Windows 一键安装 ZIP](https://github.com/Headmaster218/dsh-llm-moe4all/releases/download/release-0.2.3/dsh-llm-moe4all-windows.zip)，或打开 [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) 查看后续版本。
+1. 直接下载 [0.2.4 Windows 一键安装 ZIP](https://github.com/Headmaster218/dsh-llm-moe4all/releases/download/release-0.2.4/dsh-llm-moe4all-windows.zip)，或打开 [GitHub Releases](https://github.com/Headmaster218/dsh-llm-moe4all/releases) 查看后续版本。
 2. 解压并双击 `Install-MoE4All-Plugin.cmd`。
 3. 选择目标 DSH；看到提示后再完成当前任务、彻底退出所选 DSH，然后按回车继续。
 4. 重新启动所选 DSH。插件在首次尚未完成配置时会自动弹出 MoE4All 设置；若主动关闭，可再进入 **设置 > MoE4All**。
